@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#ff6a00">
+  <meta name="description" content="Hanuman Disha - 108 Day Sadhana Tracker">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:,">
+  <title>Hanuman Disha · 108 Day Sadhana</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div id="toast" class="toast"></div>
+
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card glass">
+      <div class="brand-mark">श्री</div>
+      <h1>श्री हनुमान चालीसा</h1>
+      <p>108-day sadhana</p>
+      <form id="auth-form">
+        <label>Email<input id="auth-email" type="email" required autocomplete="email"></label>
+        <label>Password<input id="auth-password" type="password" required minlength="6" autocomplete="current-password"></label>
+        <button class="primary-btn" type="submit"><span id="auth-submit-label">Sign in</span></button>
+      </form>
+      <button id="auth-toggle" class="text-btn">Create an account</button>
+      <small>Use your own Firebase Authentication account. The app does not expose your data publicly.</small>
+    </div>
+  </div>
+
+  <div id="app-shell" class="app-shell hidden">
+    <header class="topbar glass">
+      <button id="mobile-menu" class="icon-btn" aria-label="Open menu">☰</button>
+      <div class="top-brand">
+        <div class="brand-mark small">श्री</div>
+        <div><strong>Hanuman Disha</strong><span>108-day sadhana</span></div>
+      </div>
+      <div class="top-actions">
+        <span id="today-label"></span>
+        <button id="signout-btn" class="icon-btn" title="Sign out">↪</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside id="sidebar" class="sidebar glass">
+        <nav>
+          <button class="nav-item active" data-page="dashboard">⌂ <span>Dashboard</span></button>
+          <button class="nav-item" data-page="todo">✓ <span>Todo</span></button>
+          <button class="nav-item" data-page="exercise">🏃 <span>Exercise</span></button>
+          <button class="nav-item" data-page="jai">▶ <span>JAI SRI RAM</span></button>
+          <button class="nav-item" data-page="sitaram">ॐ <span>SITA RAM</span></button>
+          <button class="nav-item" data-page="calendar">▦ <span>Calendar</span></button>
+          <button class="nav-item" data-page="money">₹ <span>Expenses & Borrowings</span></button>
+          <button class="nav-item" data-page="settings">⚙ <span>Settings</span></button>
+        </nav>
+        <div class="sidebar-foot">108 days · one day at a time</div>
+      </aside>
+
+      <main class="content">
+        <section id="page-dashboard" class="page active">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">श्री हनुमान चालीसा</div>
+              <h2>108-day sadhana</h2>
+            </div>
+            <div id="journey-state-pill" class="status-pill">Not started</div>
+          </div>
+
+          <div class="hero-grid">
+            <div class="progress-card glass">
+              <div class="progress-ring-wrap">
+                <svg class="progress-ring" viewBox="0 0 300 300">
+                  <circle class="ring-track" cx="150" cy="150" r="122"></circle>
+                  <circle id="progress-ring" class="ring-value" cx="150" cy="150" r="122"></circle>
+                </svg>
+                <div class="progress-center">
+                  <strong id="day-number">0</strong>
+                  <span id="day-caption">of 108 days</span>
+                </div>
+              </div>
+              <div class="hero-stats">
+                <div class="stat glass">
+                  <strong id="streak-value">0</strong><span>day streak</span>
+                </div>
+                <div class="stat glass">
+                  <strong id="days-left">108</strong><span>days left</span>
+                </div>
+              </div>
+              <button id="complete-day-btn" class="primary-btn wide">Mark today complete</button>
+              <div id="day-note" class="helper"></div>
+            </div>
+
+            <div class="today-panel">
+              <div class="section-title">
+                <div><span class="eyebrow">Today</span><h3 id="today-title">Day 1</h3></div>
+                <span id="today-status" class="status-pill">Pending</span>
+              </div>
+              <div id="today-summary" class="summary-list"></div>
+              <div class="glass quote-card">
+                <span class="quote-mark">“</span>
+                <p>Discipline is built one completed day at a time.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-head"><h3>Quick access</h3></div>
+          <div class="quick-grid">
+            <button class="feature-card glass" data-go="jai"><span>▶</span><b>JAI SRI RAM</b><small id="jai-next-small">Not scheduled</small></button>
+            <button class="feature-card glass" data-go="sitaram"><span>ॐ</span><b>SITA RAM</b><small id="sita-small">0 repetitions</small></button>
+            <button class="feature-card glass" data-go="exercise"><span>🏃</span><b>Exercise</b><small id="exercise-small">0 today</small></button>
+            <button class="feature-card glass" data-go="todo"><span>✓</span><b>Todo</b><small id="todo-small">0 completed</small></button>
+          </div>
+        </section>
+
+        <section id="page-todo" class="page">
+          <div class="page-head">
+            <div><div class="eyebrow">Daily discipline</div><h2>Todo</h2></div>
+            <button id="add-todo-btn" class="primary-btn">+ Add task</button>
+          </div>
+          <div id="todo-list" class="stack"></div>
+        </section>
+
+        <section id="page-exercise" class="page">
+          <div class="page-head">
+            <div><div class="eyebrow">Body & discipline</div><h2>Exercise</h2></div>
+            <button id="exercise-settings-btn" class="secondary-btn">Exercise settings</button>
+          </div>
+          <div id="exercise-list" class="stack"></div>
+        </section>
+
+        <section id="page-jai" class="page minimal-page">
+          <div class="minimal-title">JAI SRI RAM</div>
+          <div class="video-shell glass">
+            <video id="jai-video" playsinline preload="metadata"></video>
+            <div id="jai-empty" class="video-empty">Upload your JAI SRI RAM video in Settings.</div>
+            <div class="video-bottom">
+              <button id="jai-start-btn" class="primary-btn">Start</button>
+              <span id="jai-status">Not completed today</span>
+            </div>
+          </div>
+          <div class="countdown glass">
+            <span>Next scheduled time</span>
+            <strong id="jai-countdown">--:--:--</strong>
+          </div>
+        </section>
+
+        <section id="page-sitaram" class="page minimal-page">
+          <div class="minimal-title">SITA RAM</div>
+          <div class="sita-card glass">
+            <div class="sita-count" id="sita-count">0</div>
+            <div class="sita-sub">repetitions</div>
+            <div class="sita-cycle">Cycle <strong id="sita-cycle">1</strong> · <span id="sita-cycle-progress">0 / 108</span></div>
+            <button id="sita-add-btn" class="sita-btn">SITA RAM</button>
+            <div class="countdown glass">
+              <span>Next scheduled cycle</span>
+              <strong id="sita-countdown">--:--:--</strong>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-calendar" class="page">
+          <div class="page-head">
+            <div><div class="eyebrow">108 days</div><h2>Calendar</h2></div>
+            <div class="legend">
+              <span><i class="dot upcoming"></i>Upcoming</span>
+              <span><i class="dot today"></i>Today</span>
+              <span><i class="dot complete"></i>Completed</span>
+              <span><i class="dot missed"></i>Missed</span>
+            </div>
+          </div>
+          <div class="calendar glass">
+            <div class="calendar-toolbar">
+              <button id="cal-prev" class="icon-btn">‹</button>
+              <h3 id="cal-title"></h3>
+              <button id="cal-next" class="icon-btn">›</button>
+            </div>
+            <div class="weekday-row"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+            <div id="calendar-grid" class="calendar-grid"></div>
+          </div>
+        </section>
+
+
+        <section id="page-money" class="page">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">Personal money tracking</div>
+              <h2>Expenses & Borrowings</h2>
+            </div>
+            <div class="button-row">
+              <button id="add-expense-btn" class="primary-btn">+ Expense</button>
+              <button id="add-borrowing-btn" class="secondary-btn">+ Borrowing</button>
+            </div>
+          </div>
+
+          <div class="money-stats">
+            <div class="money-stat glass">
+              <span>Total expenses</span>
+              <strong id="total-expenses">₹0</strong>
+              <small>No income is recorded in this section.</small>
+            </div>
+            <div class="money-stat glass">
+              <span>Total borrowed</span>
+              <strong id="total-borrowed">₹0</strong>
+              <small>All borrowing entries.</small>
+            </div>
+            <div class="money-stat glass">
+              <span>Outstanding borrowing</span>
+              <strong id="outstanding-borrowed">₹0</strong>
+              <small>Entries not marked settled.</small>
+            </div>
+          </div>
+
+          <div class="money-tabs">
+            <button class="money-tab active" data-money-tab="expenses">Expenses</button>
+            <button class="money-tab" data-money-tab="borrowings">Borrowings</button>
+          </div>
+          <div id="money-list" class="stack"></div>
+        </section>
+
+        <section id="page-settings" class="page">
+          <div class="page-head">
+            <div><div class="eyebrow">Configure your sadhana</div><h2>Settings</h2></div>
+            <button id="save-settings-btn" class="primary-btn">Save settings</button>
+          </div>
+
+          <div class="settings-grid">
+            <div class="settings-card glass">
+              <h3>108-day journey</h3>
+              <label>Start date<input id="setting-start" type="date"></label>
+              <label>Number of days<input id="setting-days" type="number" min="1" max="365" value="108"></label>
+              <p class="helper">If a required activity is missed and reset mode is enabled, the next journey starts at Day 1.</p>
+              <label class="switch-row"><span>Reset on missed required activity</span><input id="setting-reset" type="checkbox" checked><i></i></label>
+            </div>
+
+            <div class="settings-card glass">
+              <h3>JAI SRI RAM video</h3>
+              <label>Daily time<input id="setting-jai-time" type="time" value="06:00"></label>
+              <label class="file-label">Upload / replace video<input id="jai-upload" type="file" accept="video/*"></label>
+              <div id="jai-file-name" class="file-status">No video uploaded</div>
+              <p class="helper">There is intentionally no delete/remove control. Replacing the file uploads a new version.</p>
+            </div>
+
+            <div class="settings-card glass">
+              <h3>SITA RAM</h3>
+              <label>Next cycle time<input id="setting-sita-time" type="time" value="18:00"></label>
+              <p class="helper">Every 108 taps completes one cycle. The countdown points to the configured next time.</p>
+            </div>
+
+
+            <div class="settings-card glass">
+              <h3>Cloudinary media storage</h3>
+              <label>Cloudinary cloud name<input id="setting-cloudinary-cloud" value="hazf1hmf" placeholder="your-cloud-name"></label>
+              <label>Unsigned upload preset<input id="setting-cloudinary-preset" placeholder="your-upload-preset"></label>
+              <p class="helper">Videos and images are uploaded directly to Cloudinary under the <b>munnar_trip</b> folder. Firebase stores only the returned public URL and media metadata.</p>
+              <div class="file-status">Use an unsigned upload preset restricted to the resource types and folders you need.</div>
+            </div>
+
+            <div class="settings-card glass">
+              <h3>Google Calendar</h3>
+              <p class="helper">Use the generated event links or export an .ics file for your Google Calendar reminders.</p>
+              <div class="button-row">
+                <button id="calendar-export-btn" class="secondary-btn">Export 108-day .ics</button>
+                <button id="calendar-links-btn" class="secondary-btn">Show event links</button>
+              </div>
+              <div id="calendar-links" class="calendar-links hidden"></div>
+            </div>
+          </div>
+        </section>
+
+
+        <div id="expense-modal" class="modal hidden">
+          <div class="modal-backdrop" data-close="expense-modal"></div>
+          <div class="modal-card glass">
+            <div class="modal-head"><h3>Expense</h3><button class="icon-btn" data-close="expense-modal">×</button></div>
+            <form id="expense-form">
+              <input id="expense-id" type="hidden">
+              <label>Amount<input id="expense-amount" type="number" min="0.01" step="0.01" required placeholder="500"></label>
+              <label>Category<input id="expense-category" required placeholder="Food, travel, shopping..."></label>
+              <label>Date<input id="expense-date" type="date" required></label>
+              <label>Payment method<select id="expense-method"><option>Cash</option><option>UPI</option><option>Card</option><option>Bank transfer</option><option>Other</option></select></label>
+              <label>Note<input id="expense-note" placeholder="Optional note"></label>
+              <div class="button-row"><button type="button" class="secondary-btn" data-close="expense-modal">Cancel</button><button class="primary-btn" type="submit">Save expense</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div id="borrowing-modal" class="modal hidden">
+          <div class="modal-backdrop" data-close="borrowing-modal"></div>
+          <div class="modal-card glass">
+            <div class="modal-head"><h3>Borrowing</h3><button class="icon-btn" data-close="borrowing-modal">×</button></div>
+            <form id="borrowing-form">
+              <input id="borrowing-id" type="hidden">
+              <label>Amount<input id="borrowing-amount" type="number" min="0.01" step="0.01" required placeholder="2000"></label>
+              <label>Borrowed from<input id="borrowing-from" required placeholder="Person / source"></label>
+              <label>Date<input id="borrowing-date" type="date" required></label>
+              <label>Status<select id="borrowing-status"><option value="outstanding">Outstanding</option><option value="settled">Settled</option></select></label>
+              <label>Note<input id="borrowing-note" placeholder="Optional note"></label>
+              <div class="button-row"><button type="button" class="secondary-btn" data-close="borrowing-modal">Cancel</button><button class="primary-btn" type="submit">Save borrowing</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div id="exercise-modal" class="modal hidden">
+          <div class="modal-backdrop" data-close="exercise-modal"></div>
+          <div class="modal-card glass">
+            <div class="modal-head"><h3>Exercise settings</h3><button class="icon-btn" data-close="exercise-modal">×</button></div>
+            <form id="exercise-form">
+              <input id="exercise-id" type="hidden">
+              <label>Exercise name<input id="exercise-name" required placeholder="Surya Namaskar"></label>
+              <label>Scheduled time<input id="exercise-time" type="time" required></label>
+              <label>Required duration (minutes)<input id="exercise-duration" type="number" min="1" max="240" required value="10"></label>
+              <label class="file-label">How-to video<input id="exercise-video" type="file" accept="video/*"></label>
+              <div id="exercise-video-status" class="file-status">Optional video</div>
+              <div class="button-row"><button type="button" class="secondary-btn" data-close="exercise-modal">Cancel</button><button class="primary-btn" type="submit">Save exercise</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div id="todo-modal" class="modal hidden">
+          <div class="modal-backdrop" data-close="todo-modal"></div>
+          <div class="modal-card glass">
+            <div class="modal-head"><h3>Add task</h3><button class="icon-btn" data-close="todo-modal">×</button></div>
+            <form id="todo-form">
+              <input id="todo-id" type="hidden">
+              <label>Task<input id="todo-title" required placeholder="Read Hanuman Chalisa"></label>
+              <label>Time<input id="todo-time" type="time" required></label>
+              <label>Type
+                <select id="todo-type"><option value="task">Task</option><option value="avoid">Avoid food / habit</option></select>
+              </label>
+              <label class="switch-row"><span>Required for day completion</span><input id="todo-required" type="checkbox" checked><i></i></label>
+              <div class="button-row"><button type="button" class="secondary-btn" data-close="todo-modal">Cancel</button><button class="primary-btn" type="submit">Save task</button></div>
+            </form>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

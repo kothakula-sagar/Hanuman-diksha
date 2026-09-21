@@ -1,0 +1,1 @@
+Publish rules in Firebase Console or Firebase CLI after creating the project resources.

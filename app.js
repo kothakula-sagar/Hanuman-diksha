@@ -34,61 +34,19 @@ const state = {
 };
 
 const $ = id => document.getElementById(id);
-const INDIA_TZ = "Asia/Kolkata";
-const localDateKey = d => new Intl.DateTimeFormat("en-CA", {
-  timeZone: INDIA_TZ, year:"numeric", month:"2-digit", day:"2-digit"
-}).format(new Date(d));
-// The journey is date-based and always follows Indian Standard Time,
-// regardless of the device timezone.
-const todayKey = () => localDateKey(new Date());
-const dateFromKey = key => new Date(`${key}T00:00:00Z`);
-const indiaTimeString = d => new Date(d).toLocaleTimeString("en-IN", {
-  timeZone: INDIA_TZ, hour:"2-digit", minute:"2-digit", hour12:true
-});
-const indiaDateString = key => new Intl.DateTimeFormat("en-IN", {
-  timeZone: INDIA_TZ, day:"2-digit", month:"short", year:"numeric"
-}).format(dateFromKey(key));
-
-const exerciseStorageKey = (id, dateKey=todayKey()) =>
-  `hanuman-diksha:exercise:${state.user?.uid || "guest"}:${dateKey}:${id}`;
-
-function loadPersistedExerciseRun(id, ex){
-  try {
-    const raw = localStorage.getItem(exerciseStorageKey(id));
-    if(!raw) return null;
-    const data = JSON.parse(raw);
-    const duration = Number(data.duration || Number(ex.duration||1)*60);
-    const startedAt = Number(data.startedAt);
-    if(!startedAt || !Number.isFinite(startedAt)) return null;
-    const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-    const remaining = Math.max(0, duration - elapsed);
-    return {startedAt, duration, remaining, running: remaining > 0};
-  } catch {
-    return null;
-  }
-}
-
-function persistExerciseRun(id, run){
-  try {
-    localStorage.setItem(exerciseStorageKey(id), JSON.stringify({
-      startedAt: run.startedAt,
-      duration: run.duration
-    }));
-  } catch {}
-}
-
-function clearPersistedExerciseRun(id){
-  try { localStorage.removeItem(exerciseStorageKey(id)); } catch {}
-}
+const todayKey = () => new Date().toISOString().slice(0,10);
+const localDateKey = d => {
+  const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+};
 const esc = s => String(s ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const showToast = msg => { const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(showToast.t); showToast.t=setTimeout(()=>t.classList.remove("show"),3000); };
 
 function journeyStart(){
-  return state.settings.startDate ? dateFromKey(state.settings.startDate) : null;
+  return state.settings.startDate ? new Date(state.settings.startDate+"T00:00:00") : null;
 }
 function dayIndex(dateKey=todayKey()){
   const s=journeyStart(); if(!s) return 0;
-  const d=dateFromKey(dateKey);
+  const d=new Date(dateKey+"T00:00:00");
   return Math.floor((d-s)/86400000)+1;
 }
 function journeyEnd(){
@@ -137,24 +95,25 @@ async function applyAutomaticResetIfNeeded(){
   resetCheckRunning = true;
   try {
     const start = journeyStart();
-    const yesterday = dateFromKey(todayKey());
-    yesterday.setUTCDate(yesterday.getUTCDate()-1);
+    const yesterday = new Date();
+    yesterday.setHours(0,0,0,0);
+    yesterday.setDate(yesterday.getDate()-1);
     if(yesterday < start) return;
 
     // Find the most recent missed day from the current journey.
-    // A missed day is only finalized after that IST calendar day has ended.
+    // A missed day is only finalized after that calendar day has ended.
     let cursor = new Date(yesterday);
     let lastMissed = null;
     for(let i=0; i<Number(state.settings.days||108); i++){
       if(cursor < start) break;
       const key = localDateKey(cursor);
       if(!allRequiredComplete(key) && !recordFor(key).manual) lastMissed = key;
-      cursor.setUTCDate(cursor.getUTCDate()-1);
+      cursor.setDate(cursor.getDate()-1);
     }
 
     if(lastMissed){
-      const restart = dateFromKey(lastMissed);
-      restart.setUTCDate(restart.getUTCDate()+1);
+      const restart = new Date(lastMissed+"T00:00:00");
+      restart.setDate(restart.getDate()+1);
       const restartKey = localDateKey(restart);
       // Do not repeatedly reset when the current start date is already the restart date.
       if(state.settings.startDate !== restartKey){
@@ -181,7 +140,7 @@ function streak(){
 }
 
 function renderAll(){
-  renderDashboard(); renderTodo(); renderExercises(); renderJai(); renderSita(); renderJaiHistory(); renderSitaHistory(); renderCalendar(); renderMoney(); renderSettings();
+  renderDashboard(); renderTodo(); renderExercises(); renderJai(); renderSita(); renderCalendar(); renderMoney(); renderSettings();
   $("today-label").textContent=new Date().toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
 }
 
@@ -195,13 +154,15 @@ function renderDashboard(){
   const complete=allRequiredComplete();
   $("today-status").textContent=complete?"Completed":"Pending";
   $("journey-state-pill").textContent=state.settings.startDate ? (day?`Day ${day} active`:"Upcoming"):"Not started";
+  $("complete-day-btn").disabled=!state.settings.startDate;
+  $("complete-day-btn").textContent=complete?"Today completed":"Mark today complete";
   const todos=state.todos.map(t=>({label:t.title,done:recordFor().todo?.[t.id]===true,time:t.time}));
   const ex=state.exercises.map(e=>({label:e.name,done:recordFor().exercise?.[e.id]?.completed===true,time:e.time}));
   const items=[...todos,...ex,{label:"JAI SRI RAM video",done:jaiComplete(),time:state.settings.jaiTime}];
   $("today-summary").innerHTML=items.length?items.map(x=>`<div class="summary-item"><div><b>${esc(x.label)}</b><small>${x.time||""}</small></div><span class="check ${x.done?"done":""}">${x.done?"✓":"•"}</span></div>`).join(""):`<div class="empty glass">Add your first daily task in Todo.</div>`;
   $("day-note").textContent=state.settings.resetOnMiss?"A missed required activity will mark the day missed and the next journey starts at Day 1.":"Reset mode is off. Missed days remain recorded without automatic reset.";
   $("jai-next-small").textContent=`Daily ${state.settings.jaiTime||"--:--"}`;
-  $("sita-small").textContent=`${sitaDailyCount()} / 108 repetitions`;
+  $("sita-small").textContent=`${state.sita.count||0} repetitions`;
   $("exercise-small").textContent=`${state.exercises.filter(e=>recordFor().exercise?.[e.id]?.completed).length}/${state.exercises.length} today`;
   $("todo-small").textContent=`${state.todos.filter(t=>recordFor().todo?.[t.id]).length}/${state.todos.length} completed`;
 }
@@ -224,14 +185,11 @@ function renderExercises(){
   if(!state.exercises.length){box.innerHTML=`<div class="empty glass">No exercises configured. Use Exercise settings to add one.</div>`;return}
   box.innerHTML=state.exercises.slice().sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(e=>{
     const run=recordFor().exercise?.[e.id]||{};
-    const mins=Number(e.duration||1);
-    const persisted=state.user && !run.completed ? loadPersistedExerciseRun(e.id,e) : null;
-    if(persisted && !state.exerciseRuns[e.id]) state.exerciseRuns[e.id]=persisted;
-    const remaining=state.exerciseRuns[e.id]?.remaining ?? mins*60;
+    const mins=Number(e.duration||1), remaining=state.exerciseRuns[e.id]?.remaining ?? mins*60;
     return `<div class="exercise-card glass">
       <div class="exercise-head"><div><h3>${esc(e.name)}</h3><div class="task-meta">${esc(e.time)} · ${mins} minutes</div></div><button class="icon-btn" data-ex-edit="${e.id}">✎</button></div>
       ${e.videoUrl?`<video class="exercise-video" controls playsinline preload="metadata" src="${esc(e.videoUrl)}"></video>`:""}
-      <div class="exercise-controls"><button class="primary-btn" data-ex-start="${e.id}">${run.completed?"Completed":"Start"}</button><span class="timer" id="timer-${e.id}">${formatTimer(remaining)}</span>${run.completed?`<span class="status-pill">Completed ${indiaTimeString(run.completedAt)}</span>`:""}</div>
+      <div class="exercise-controls"><button class="primary-btn" data-ex-start="${e.id}">${run.completed?"Completed":"Start"}</button><span class="timer" id="timer-${e.id}">${formatTimer(remaining)}</span>${run.completed?`<span class="status-pill">Completed ${new Date(run.completedAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>`:""}</div>
     </div>`;
   }).join("");
   Object.entries(state.exerciseRuns).forEach(([id,v])=>{const el=$(`timer-${id}`);if(el)el.textContent=formatTimer(v.remaining);});
@@ -241,54 +199,30 @@ function formatTimer(sec){sec=Math.max(0,Math.floor(sec));return `${String(Math.
 async function startExercise(id){
   const ex=state.exercises.find(x=>x.id===id); if(!ex)return;
   if(recordFor().exercise?.[id]?.completed){return}
-
-  // Rehydrate a run that may have been started before a refresh/tab close.
-  let run=state.exerciseRuns[id] || loadPersistedExerciseRun(id,ex);
-  if(run?.interval) return;
-
-  const duration=Number(ex.duration||1)*60;
-  const startedAt=run?.startedAt || Date.now();
-  const elapsed=Math.floor((Date.now()-startedAt)/1000);
-  let remaining=Math.max(0,duration-elapsed);
-  run={startedAt,duration,remaining};
-  state.exerciseRuns[id]=run;
-  persistExerciseRun(id,run);
+  if(state.exerciseRuns[id]?.interval)return;
+  let remaining=Number(ex.duration||1)*60;
+  state.exerciseRuns[id]={remaining};
   renderExercises();
-
-  const tick=async()=>{
-    const current=state.exerciseRuns[id];
-    if(!current) return;
-    remaining=Math.max(0,current.duration-Math.floor((Date.now()-current.startedAt)/1000));
-    current.remaining=remaining;
+  state.exerciseRuns[id].interval=setInterval(async()=>{
+    remaining--; state.exerciseRuns[id].remaining=remaining;
     const el=$(`timer-${id}`); if(el)el.textContent=formatTimer(remaining);
-
     if(remaining<=0){
-      clearInterval(current.interval);
-      current.interval=null;
-      clearPersistedExerciseRun(id);
-      const startedIso=new Date(current.startedAt).toISOString();
-      await setExerciseRecord(id,{completed:true,startedAt:startedIso,completedAt:new Date().toISOString(),actualDuration:Number(ex.duration)*60});
-      current.remaining=0; renderAll(); showToast(`${ex.name} completed`);
+      clearInterval(state.exerciseRuns[id].interval);
+      await setExerciseRecord(id,{completed:true,startedAt:state.exerciseRuns[id].startedAt||new Date().toISOString(),completedAt:new Date().toISOString(),actualDuration:Number(ex.duration)*60});
+      state.exerciseRuns[id].remaining=0; renderAll(); showToast(`${ex.name} completed`);
     }
-  };
-
-  if(remaining<=0){ await tick(); return; }
-  state.exerciseRuns[id].interval=setInterval(tick,1000);
-  await tick();
+  },1000);
+  state.exerciseRuns[id].startedAt=new Date().toISOString();
 }
 
 async function setExerciseRecord(id,value){
   const key=todayKey(), r=recordFor(key);
   r.exercise={...(r.exercise||{}),[id]:value}; state.records[key]=r;
-  if(value?.completed) clearPersistedExerciseRun(id);
   await saveRecord(key,r);
 }
 async function saveRecord(key,r){
   if(!state.user)return;
-  const complete=allRequiredComplete(key);
-  const next={...r,status:complete?"complete":"pending",updatedAt:serverTimestamp()};
-  state.records[key]={...r,status:complete?"complete":"pending"};
-  await setDoc(doc(db,"users",state.user.uid,"dailyRecords",key),next,{merge:true});
+  await setDoc(doc(db,"users",state.user.uid,"dailyRecords",key),{...r,updatedAt:serverTimestamp()},{merge:true});
 }
 
 function renderJai(){
@@ -298,75 +232,18 @@ function renderJai(){
   const done=jaiComplete(); $("jai-status").textContent=done?"Completed today":"Not completed today";
   $("jai-start-btn").disabled=!state.jai.url || done;
 }
-
-function renderJaiHistory(){
-  const body=$("jai-history-body"), empty=$("jai-history-empty");
-  if(!body) return;
-  const rows=Object.entries(state.records)
-    .filter(([key,r])=>r?.jai===true)
-    .map(([key,r])=>({key,completedAt:r.jaiCompletedAt||r.updatedAt}))
-    .filter(x=>x.completedAt)
-    .sort((a,b)=>b.key.localeCompare(a.key));
-  body.innerHTML=rows.map((row,i)=>`<tr><td>${i+1}</td><td>${esc(indiaDateString(row.key))}</td><td>${esc(indiaTimeString(row.completedAt))}</td></tr>`).join("");
-  empty?.classList.toggle("hidden",rows.length>0);
-}
-
-function sitaDailyCount(dateKey=todayKey()){
-  return Math.min(108, Math.max(0, Number(recordFor(dateKey).sitaCount||0)));
-}
-
 function renderSita(){
-  const count=sitaDailyCount();
-  const total=108;
-  const pct=count/total;
-  const circumference=2*Math.PI*108;
-  const ring=$("sita-progress-ring");
-  if(ring){
-    ring.style.strokeDasharray=circumference;
-    ring.style.strokeDashoffset=circumference*(1-pct);
-  }
-  $("sita-count").textContent=count;
-  $("sita-cycle").textContent=count;
-  $("sita-cycle-progress").textContent=`${count} / ${total}`;
-  const btn=$("sita-add-btn");
-  if(btn){
-    btn.disabled=count>=total;
-    btn.textContent=count>=total ? "108 / 108 Completed" : "SITA RAM";
-  }
+  const count=Number(state.sita.count||0); $("sita-count").textContent=count; $("sita-cycle").textContent=Math.floor(count/108)+1; $("sita-cycle-progress").textContent=`${count%108} / 108`;
 }
-function renderSitaHistory(){
-  const body=$("sita-history-body"), empty=$("sita-history-empty");
-  if(!body) return;
-  const rows=Object.entries(state.records)
-    .filter(([key,r])=>Number(r?.sitaCount||0)>=108)
-    .map(([key,r])=>({key,completedAt:r.sitaCompletedAt||r.sitaUpdatedAt||r.updatedAt}))
-    .filter(x=>x.completedAt)
-    .sort((a,b)=>b.key.localeCompare(a.key));
-  body.innerHTML=rows.map((row,i)=>`<tr><td>${i+1}</td><td>${esc(indiaDateString(row.key))}</td><td>${esc(indiaTimeString(row.completedAt))}</td></tr>`).join("");
-  empty?.classList.toggle("hidden",rows.length>0);
-}
-
 function nextTimeCountdown(time){
   if(!time)return "--:--:--";
-  const [h,m]=time.split(":").map(Number);
-  const now=new Date();
-  const parts=new Intl.DateTimeFormat("en-CA", {timeZone:INDIA_TZ, hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false}).formatToParts(now);
-  const get=k=>Number(parts.find(x=>x.type===k)?.value||0);
-  let secondsUntil=(h-get("hour"))*3600+(m-get("minute"))*60-get("second");
-  if(secondsUntil<=0)secondsUntil+=86400;
-  return formatHMS(secondsUntil*1000);
+  const [h,m]=time.split(":").map(Number), now=new Date(), target=new Date(now); target.setHours(h,m,0,0);
+  if(target<=now)target.setDate(target.getDate()+1);
+  return formatHMS(Math.max(0,target-now));
 }
 function formatHMS(ms){let s=Math.floor(ms/1000),h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60);s%=60;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`}
 function updateCountdowns(){ $("jai-countdown").textContent=nextTimeCountdown(state.settings.jaiTime); $("sita-countdown").textContent=nextTimeCountdown(state.settings.sitaTime); }
 setInterval(updateCountdowns,1000);
-let lastRenderedIndiaDate=todayKey();
-setInterval(()=>{
-  const current=todayKey();
-  if(current!==lastRenderedIndiaDate){
-    lastRenderedIndiaDate=current;
-    renderAll();
-  }
-},1000);
 
 async function completeJai(){
   const v=$("jai-video"); if(!v.src)return;
@@ -395,6 +272,12 @@ async function toggleTodo(id){
   const key=todayKey(),r=recordFor(key);r.todo={...(r.todo||{}),[id]:!(r.todo?.[id]===true)};state.records[key]=r;
   await saveRecord(key,r);renderAll();
 }
+async function manualCompleteDay(){
+  if(!state.settings.startDate)return showToast("Set a start date first.");
+  if(!allRequiredComplete())return showToast("Complete all required items before marking the day done.");
+  const key=todayKey(),r=recordFor(key);r.manual=true;r.status="complete";state.records[key]=r;await saveRecord(key,r);renderAll();showToast("Today marked complete");
+}
+
 function renderCalendar(){
   const d=state.calendarMonth, y=d.getFullYear(),m=d.getMonth();
   $("cal-title").textContent=d.toLocaleDateString(undefined,{month:"long",year:"numeric"});
@@ -479,6 +362,8 @@ async function loadUser(){
   const snap=await getDoc(ref);
   if(snap.exists())state.settings={...state.settings,...snap.data()};
   else await setDoc(ref,{...state.settings,createdAt:serverTimestamp()});
+  const sr=await getDoc(doc(db,"users",state.user.uid,"meta","sita"));
+  if(sr.exists())state.sita={...state.sita,...sr.data()};
   const jr=await getDoc(doc(db,"users",state.user.uid,"meta","jai"));
   if(jr.exists())state.jai={...state.jai,...jr.data()};
   const tq=query(collection(db,"users",state.user.uid,"todos"),orderBy("time"));
@@ -612,6 +497,7 @@ $("mobile-menu").onclick=()=>$("sidebar").classList.toggle("open");
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
 document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>switchPage(b.dataset.go));
 $("signout-btn").onclick=()=>signOut(auth);
+$("complete-day-btn").onclick=manualCompleteDay;
 $("add-todo-btn").onclick=()=>{ $("todo-id").value=""; $("todo-form").reset();$("todo-required").checked=true;openModal("todo-modal");};
 $("exercise-settings-btn").onclick=()=>{ $("exercise-form").reset();$("exercise-id").value="";$("exercise-video-status").textContent="Optional video";openModal("exercise-modal");};
 $("save-settings-btn").onclick=saveSettings;
@@ -623,23 +509,10 @@ $("borrowing-form").onsubmit=saveBorrowing;
 document.querySelectorAll(".money-tab").forEach(b=>b.onclick=()=>{state.moneyTab=b.dataset.moneyTab;renderMoney()});
 $("jai-start-btn").onclick=completeJai;
 $("sita-add-btn").onclick=async()=>{
-  const key=todayKey();
-  const current=sitaDailyCount(key);
-  if(current>=108){
-    renderSita();
-    return;
-  }
-  const count=current+1;
-  const r=recordFor(key);
-  r.sitaCount=count;
-  r.sitaUpdatedAt=new Date().toISOString();
-  if(count===108 && !r.sitaCompletedAt) r.sitaCompletedAt=new Date().toISOString();
-  state.records[key]=r;
-  await saveRecord(key,r);
-  renderSita();
-  renderSitaHistory();
-  renderDashboard();
-  if(count===108)showToast("108 SITA RAM repetitions completed for today.");
+  const count=Number(state.sita.count||0)+1;const cycle=Math.floor(count/108)+1;const completed=count%108===0;
+  state.sita={...state.sita,count,cycle,cycleCompletedAt:completed?new Date().toISOString():state.sita.cycleCompletedAt};
+  await setDoc(doc(db,"users",state.user.uid,"meta","sita"),state.sita,{merge:true});renderSita();renderDashboard();
+  if(completed)showToast("108 SITA RAM repetitions completed.");
 };
 $("cal-prev").onclick=()=>{state.calendarMonth=new Date(state.calendarMonth.getFullYear(),state.calendarMonth.getMonth()-1,1);renderCalendar()};
 $("cal-next").onclick=()=>{state.calendarMonth=new Date(state.calendarMonth.getFullYear(),state.calendarMonth.getMonth()+1,1);renderCalendar()};

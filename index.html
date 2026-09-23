@@ -90,6 +90,7 @@
                   <strong id="days-left">108</strong><span>days left</span>
                 </div>
               </div>
+              <button id="complete-day-btn" class="primary-btn wide">Mark today complete</button>
               <div id="day-note" class="helper"></div>
             </div>
 
@@ -145,52 +146,19 @@
             <span>Next scheduled time</span>
             <strong id="jai-countdown">--:--:--</strong>
           </div>
-          <div class="history-card glass">
-            <div class="history-head">
-              <div><div class="eyebrow">Completed records</div><h3>JAI SRI RAM History</h3></div>
-            </div>
-            <div class="history-table-wrap">
-              <table class="history-table">
-                <thead><tr><th>Sl no</th><th>Date</th><th>Completed Time</th></tr></thead>
-                <tbody id="jai-history-body"></tbody>
-              </table>
-            </div>
-            <div id="jai-history-empty" class="history-empty hidden">No completed JAI SRI RAM records yet.</div>
-          </div>
         </section>
 
         <section id="page-sitaram" class="page minimal-page">
           <div class="minimal-title">SITA RAM</div>
           <div class="sita-card glass">
-            <div class="sita-progress" aria-label="SITA RAM daily progress">
-              <svg viewBox="0 0 260 260" class="sita-progress-svg" aria-hidden="true">
-                <circle class="sita-ring-track" cx="130" cy="130" r="108"></circle>
-                <circle class="sita-ring-value" id="sita-progress-ring" cx="130" cy="130" r="108"></circle>
-              </svg>
-              <div class="sita-progress-center">
-                <strong id="sita-count">0</strong>
-                <span id="sita-cycle-progress">0 / 108</span>
-              </div>
-            </div>
-            <div class="sita-sub">daily SITA RAM repetitions</div>
-            <div class="sita-cycle">Today · <strong id="sita-cycle">1</strong> / 108 complete</div>
+            <div class="sita-count" id="sita-count">0</div>
+            <div class="sita-sub">repetitions</div>
+            <div class="sita-cycle">Cycle <strong id="sita-cycle">1</strong> · <span id="sita-cycle-progress">0 / 108</span></div>
             <button id="sita-add-btn" class="sita-btn">SITA RAM</button>
             <div class="countdown glass">
               <span>Next scheduled cycle</span>
               <strong id="sita-countdown">--:--:--</strong>
             </div>
-          </div>
-          <div class="history-card glass">
-            <div class="history-head">
-              <div><div class="eyebrow">108 repetitions completed</div><h3>SITA RAM History</h3></div>
-            </div>
-            <div class="history-table-wrap">
-              <table class="history-table">
-                <thead><tr><th>Sl no</th><th>Date</th><th>Completed Time</th></tr></thead>
-                <tbody id="sita-history-body"></tbody>
-              </table>
-            </div>
-            <div id="sita-history-empty" class="history-empty hidden">No completed SITA RAM records yet.</div>
           </div>
         </section>
 

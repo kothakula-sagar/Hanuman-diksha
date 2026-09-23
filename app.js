@@ -45,6 +45,9 @@ const dateFromKey = key => new Date(`${key}T00:00:00Z`);
 const indiaTimeString = d => new Date(d).toLocaleTimeString("en-IN", {
   timeZone: INDIA_TZ, hour:"2-digit", minute:"2-digit", hour12:true
 });
+const indiaDateString = key => new Intl.DateTimeFormat("en-IN", {
+  timeZone: INDIA_TZ, day:"2-digit", month:"short", year:"numeric"
+}).format(dateFromKey(key));
 
 const exerciseStorageKey = (id, dateKey=todayKey()) =>
   `hanuman-diksha:exercise:${state.user?.uid || "guest"}:${dateKey}:${id}`;
@@ -178,7 +181,7 @@ function streak(){
 }
 
 function renderAll(){
-  renderDashboard(); renderTodo(); renderExercises(); renderJai(); renderSita(); renderCalendar(); renderMoney(); renderSettings();
+  renderDashboard(); renderTodo(); renderExercises(); renderJai(); renderSita(); renderJaiHistory(); renderSitaHistory(); renderCalendar(); renderMoney(); renderSettings();
   $("today-label").textContent=new Date().toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
 }
 
@@ -295,6 +298,19 @@ function renderJai(){
   const done=jaiComplete(); $("jai-status").textContent=done?"Completed today":"Not completed today";
   $("jai-start-btn").disabled=!state.jai.url || done;
 }
+
+function renderJaiHistory(){
+  const body=$("jai-history-body"), empty=$("jai-history-empty");
+  if(!body) return;
+  const rows=Object.entries(state.records)
+    .filter(([key,r])=>r?.jai===true)
+    .map(([key,r])=>({key,completedAt:r.jaiCompletedAt||r.updatedAt}))
+    .filter(x=>x.completedAt)
+    .sort((a,b)=>b.key.localeCompare(a.key));
+  body.innerHTML=rows.map((row,i)=>`<tr><td>${i+1}</td><td>${esc(indiaDateString(row.key))}</td><td>${esc(indiaTimeString(row.completedAt))}</td></tr>`).join("");
+  empty?.classList.toggle("hidden",rows.length>0);
+}
+
 function sitaDailyCount(dateKey=todayKey()){
   return Math.min(108, Math.max(0, Number(recordFor(dateKey).sitaCount||0)));
 }
@@ -318,6 +334,18 @@ function renderSita(){
     btn.textContent=count>=total ? "108 / 108 Completed" : "SITA RAM";
   }
 }
+function renderSitaHistory(){
+  const body=$("sita-history-body"), empty=$("sita-history-empty");
+  if(!body) return;
+  const rows=Object.entries(state.records)
+    .filter(([key,r])=>Number(r?.sitaCount||0)>=108)
+    .map(([key,r])=>({key,completedAt:r.sitaCompletedAt||r.sitaUpdatedAt||r.updatedAt}))
+    .filter(x=>x.completedAt)
+    .sort((a,b)=>b.key.localeCompare(a.key));
+  body.innerHTML=rows.map((row,i)=>`<tr><td>${i+1}</td><td>${esc(indiaDateString(row.key))}</td><td>${esc(indiaTimeString(row.completedAt))}</td></tr>`).join("");
+  empty?.classList.toggle("hidden",rows.length>0);
+}
+
 function nextTimeCountdown(time){
   if(!time)return "--:--:--";
   const [h,m]=time.split(":").map(Number);
@@ -605,9 +633,11 @@ $("sita-add-btn").onclick=async()=>{
   const r=recordFor(key);
   r.sitaCount=count;
   r.sitaUpdatedAt=new Date().toISOString();
+  if(count===108 && !r.sitaCompletedAt) r.sitaCompletedAt=new Date().toISOString();
   state.records[key]=r;
   await saveRecord(key,r);
   renderSita();
+  renderSitaHistory();
   renderDashboard();
   if(count===108)showToast("108 SITA RAM repetitions completed for today.");
 };

@@ -70,3 +70,21 @@ select option{color:#111}
 .money-card .badge{padding:6px 9px;border-radius:999px;font-size:10px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18)}
 @media(max-width:800px){.money-stats{grid-template-columns:1fr}}
 @media(max-width:560px){.money-card{grid-template-columns:1fr}.money-card .money-actions{justify-content:flex-start}}
+
+/* Completion history tables */
+.history-card{width:min(760px,100%);margin-top:22px;padding:24px;border-radius:28px}
+.history-head{margin-bottom:16px}
+.history-head h3{margin:4px 0 0;font-size:24px}
+.history-table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:16px}
+.history-table{width:100%;min-width:420px;border-collapse:collapse;text-align:left}
+.history-table th,.history-table td{padding:13px 14px;border-bottom:1px solid rgba(255,255,255,.12);white-space:nowrap}
+.history-table th{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+.history-table td{font-size:15px}
+.history-table tbody tr:last-child td{border-bottom:0}
+.history-empty{padding:14px 0;color:var(--muted);font-size:14px}
+@media(max-width:600px){
+  .history-card{padding:18px;border-radius:22px}
+  .history-head h3{font-size:20px}
+  .history-table{min-width:360px}
+  .history-table th,.history-table td{padding:11px 10px}
+}

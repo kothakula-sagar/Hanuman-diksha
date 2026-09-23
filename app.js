@@ -7,14 +7,9 @@ import {
   getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, deleteDoc, onSnapshot,
   query, orderBy, serverTimestamp, where
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-import {
-  getStorage, ref, uploadBytes, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 const state = {
   user:null,
@@ -29,6 +24,7 @@ const state = {
   moneyTab:"expenses",
   calendarMonth:new Date(new Date().getFullYear(),new Date().getMonth(),1),
   exerciseRuns:{},
+  exerciseAnimations:{},
   unsub:[],
   authRegister:false
 };
@@ -51,6 +47,15 @@ const indiaDateString = key => new Intl.DateTimeFormat("en-IN", {
 
 const exerciseStorageKey = (id, dateKey=todayKey()) =>
   `hanuman-diksha:exercise:${state.user?.uid || "guest"}:${dateKey}:${id}`;
+const activeExerciseStorageKey = (dateKey=todayKey()) =>
+  `hanuman-diksha:active-exercise:${state.user?.uid || "guest"}:${dateKey}`;
+
+function getActiveExerciseId(dateKey=todayKey()){
+  try { return localStorage.getItem(activeExerciseStorageKey(dateKey)) || null; } catch { return null; }
+}
+function setActiveExerciseId(id,dateKey=todayKey()){
+  try { if(id) localStorage.setItem(activeExerciseStorageKey(dateKey),id); else localStorage.removeItem(activeExerciseStorageKey(dateKey)); } catch {}
+}
 
 function loadPersistedExerciseRun(id, ex){
   try {
@@ -78,8 +83,94 @@ function persistExerciseRun(id, run){
 }
 
 function clearPersistedExerciseRun(id){
-  try { localStorage.removeItem(exerciseStorageKey(id)); } catch {}
+  try {
+    localStorage.removeItem(exerciseStorageKey(id));
+    if(getActiveExerciseId()===id) localStorage.removeItem(activeExerciseStorageKey());
+  } catch {}
 }
+
+function cancelExerciseAnimations(){
+  Object.values(state.exerciseAnimations||{}).forEach(a=>{ if(a?.raf) cancelAnimationFrame(a.raf); });
+  state.exerciseAnimations={};
+}
+
+function exerciseKind(name){
+  const n=String(name||'').toLowerCase();
+  if(n.includes('skip')) return 'skipping';
+  if(n.includes('squat')) return 'squats';
+  if(n.includes('push') || n.includes('chest')) return 'pushups';
+  if(n.includes('lat') || n.includes('row')) return 'rows';
+  if(n.includes('plank')) return 'plank';
+  if(n.includes('stretch') || n.includes('recover')) return 'stretch';
+  if(n.includes('warm')) return 'warmup';
+  return 'default';
+}
+
+function startExerciseCanvas(id){
+  const canvas=$(`exercise-canvas-${id}`);
+  if(!canvas || state.exerciseAnimations[id]) return;
+  const ctx=canvas.getContext('2d');
+  const dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+  const resize=()=>{
+    const r=canvas.getBoundingClientRect();
+    canvas.width=Math.max(1,Math.floor(r.width*dpr));
+    canvas.height=Math.max(1,Math.floor(r.height*dpr));
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  };
+  resize();
+  const ro='ResizeObserver' in window ? new ResizeObserver(resize) : null;
+  ro?.observe(canvas);
+  const ex=state.exercises.find(x=>x.id===id);
+  const kind=exerciseKind(ex?.name);
+  const loop={raf:0,ro}; state.exerciseAnimations[id]=loop;
+
+  const drawPerson=(t)=>{
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    ctx.clearRect(0,0,w,h);
+    const g=ctx.createLinearGradient(0,0,w,h); g.addColorStop(0,'rgba(255,255,255,.14)'); g.addColorStop(1,'rgba(255,255,255,.035)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+    const ground=h*.78, cx=w*.5, phase=(t/1000)*Math.PI*2;
+    const pulse=(Math.sin(phase)+1)/2;
+    ctx.strokeStyle='rgba(255,255,255,.14)'; ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(cx,ground+8,w*.30,10,0,0,Math.PI*2);ctx.stroke();
+    ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#fff';ctx.fillStyle='#fff';ctx.lineWidth=Math.max(5,w*.012);
+    const line=(a,b)=>{ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()};
+    const circle=(x,y,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill()};
+    let head=[cx,ground-170], neck=[cx,ground-145], hip=[cx,ground-75];
+    let shoulder=[cx,ground-125], lHand=[cx-55,ground-85], rHand=[cx+55,ground-85], lKnee=[cx-25,ground-35], rKnee=[cx+25,ground-35], lFoot=[cx-40,ground], rFoot=[cx+40,ground];
+    if(kind==='skipping'){
+      const jump=Math.abs(Math.sin(phase))*14, arm=Math.sin(phase)*28; head[1]-=jump;neck[1]-=jump;hip[1]-=jump;shoulder[1]-=jump;
+      lHand=[cx-68-arm,ground-98-jump];rHand=[cx+68+arm,ground-98-jump];
+      lKnee=[cx-24,ground-34-jump];rKnee=[cx+24,ground-34-jump];lFoot=[cx-36,ground-jump];rFoot=[cx+36,ground-jump];
+      ctx.strokeStyle='rgba(255,255,255,.75)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,ground-90-jump,78+arm*.2,0.15,Math.PI-0.15);ctx.stroke();
+    } else if(kind==='squats'){
+      const q=(Math.sin(phase)+1)/2; const bend=55*q; head[1]+=bend*.38; neck[1]+=bend*.45; hip[1]+=bend; shoulder[1]+=bend*.45;
+      lKnee=[cx-42,ground-35+bend*.35];rKnee=[cx+42,ground-35+bend*.35];lFoot=[cx-58,ground];rFoot=[cx+58,ground];lHand=[cx-52,ground-75+bend*.25];rHand=[cx+52,ground-75+bend*.25];
+    } else if(kind==='pushups'){
+      const q=(Math.sin(phase)+1)/2; const y=ground-55-q*15;
+      head=[cx-100,y-30];neck=[cx-75,y-10];shoulder=[cx-55,y];hip=[cx+65,y+10];
+      lHand=[cx-75,ground];rHand=[cx-35,ground];lKnee=[cx+95,ground-20];rKnee=[cx+110,ground-12];lFoot=[cx+130,ground];rFoot=[cx+145,ground];
+    } else if(kind==='rows'){
+      const q=Math.sin(phase); head[1]+=q*8; shoulder[1]+=q*8; hip[1]+=q*8; lHand=[cx-72-q*20,ground-88+q*10];rHand=[cx+72+q*20,ground-88+q*10];
+      ctx.strokeStyle='rgba(255,255,255,.45)';ctx.lineWidth=4;line([cx-105,ground-130],[cx-72-q*20,ground-88+q*10]);line([cx+105,ground-130],[cx+72+q*20,ground-88+q*10]);
+    } else if(kind==='plank'){
+      const q=Math.sin(phase)*3; const y=ground-45+q; head=[cx-90,y-20];neck=[cx-65,y];shoulder=[cx-45,y];hip=[cx+65,y+4];lHand=[cx-62,ground];rHand=[cx-38,ground];lKnee=[cx+100,ground-10];rKnee=[cx+112,ground-5];lFoot=[cx+135,ground];rFoot=[cx+148,ground];
+    } else if(kind==='stretch'){
+      const q=Math.sin(phase)*18; head[0]+=q*.15; head[1]-=Math.abs(q)*.15; lHand=[cx-100-q,ground-125];rHand=[cx+100+q,ground-125];lKnee=[cx-35,ground-38];rKnee=[cx+35,ground-38];
+    } else {
+      const q=Math.sin(phase)*12; lHand=[cx-55-q,ground-92];rHand=[cx+55+q,ground-92];
+    }
+    circle(head[0],head[1],19);
+    line(neck,shoulder); line(shoulder,lHand); line(shoulder,rHand); line(shoulder,hip);
+    line(hip,lKnee); line(lKnee,lFoot); line(hip,rKnee); line(rKnee,rFoot);
+    ctx.fillStyle='rgba(255,255,255,.72)';ctx.font='700 13px Arial';ctx.textAlign='center';ctx.fillText('LIVE EXERCISE',cx,28);
+  };
+  const frame=now=>{
+    if(!state.exerciseAnimations[id]) return;
+    drawPerson(now); loop.raf=requestAnimationFrame(frame);
+  };
+  loop.raf=requestAnimationFrame(frame);
+}
+
 const esc = s => String(s ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const showToast = msg => { const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(showToast.t); showToast.t=setTimeout(()=>t.classList.remove("show"),3000); };
 
@@ -220,60 +311,81 @@ function renderTodo(){
 }
 
 function renderExercises(){
+  cancelExerciseAnimations();
   const box=$("exercise-list");
   if(!state.exercises.length){box.innerHTML=`<div class="empty glass">No exercises configured. Use Exercise settings to add one.</div>`;return}
+  let activeId=getActiveExerciseId();
+  if(activeId){
+    const activeEx=state.exercises.find(x=>x.id===activeId);
+    const activeRecord=recordFor().exercise?.[activeId];
+    const activeRun=state.exerciseRuns[activeId] || (activeEx && !activeRecord?.completed ? loadPersistedExerciseRun(activeId,activeEx) : null);
+    if(activeRun && !state.exerciseRuns[activeId]) state.exerciseRuns[activeId]=activeRun;
+    if(!activeEx || activeRecord?.completed || !activeRun || activeRun.remaining<=0){
+      clearPersistedExerciseRun(activeId);
+      setActiveExerciseId(null);
+      delete state.exerciseRuns[activeId];
+      activeId=null;
+    }
+  }
   box.innerHTML=state.exercises.slice().sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(e=>{
     const run=recordFor().exercise?.[e.id]||{};
-    const mins=Number(e.duration||1);
+    const mins=Math.max(1,Number(e.duration||1));
     const persisted=state.user && !run.completed ? loadPersistedExerciseRun(e.id,e) : null;
     if(persisted && !state.exerciseRuns[e.id]) state.exerciseRuns[e.id]=persisted;
+    const active=e.id===activeId && !run.completed;
     const remaining=state.exerciseRuns[e.id]?.remaining ?? mins*60;
-    return `<div class="exercise-card glass">
-      <div class="exercise-head"><div><h3>${esc(e.name)}</h3><div class="task-meta">${esc(e.time)} · ${mins} minutes</div></div><button class="icon-btn" data-ex-edit="${e.id}">✎</button></div>
-      ${e.videoUrl?`<video class="exercise-video" controls playsinline preload="metadata" src="${esc(e.videoUrl)}"></video>`:""}
-      <div class="exercise-controls"><button class="primary-btn" data-ex-start="${e.id}">${run.completed?"Completed":"Start"}</button><span class="timer" id="timer-${e.id}">${formatTimer(remaining)}</span>${run.completed?`<span class="status-pill">Completed ${indiaTimeString(run.completedAt)}</span>`:""}</div>
+    const anotherActive=!!activeId && activeId!==e.id;
+    const buttonLabel=run.completed?'✓ Completed':active?'Running':'Start';
+    return `<div class="exercise-card glass ${active?'exercise-active':''} ${run.completed?'exercise-done':''}">
+      <div class="exercise-head"><div><h3>${esc(e.name)}</h3><div class="task-meta">${esc(e.time||'')} · ${mins} minutes</div></div><button class="icon-btn" data-ex-edit="${e.id}" ${active||anotherActive?'disabled':''}>✎</button></div>
+      <div class="exercise-canvas-wrap"><canvas id="exercise-canvas-${e.id}" class="exercise-canvas" aria-label="Animated ${esc(e.name)} demonstration"></canvas><div class="canvas-badge">${active?'● LIVE':run.completed?'✓ DONE':'READY'}</div></div>
+      <div class="exercise-controls"><button class="primary-btn" data-ex-start="${e.id}" ${run.completed||anotherActive||active?'disabled':''}>${buttonLabel}</button><span class="timer ${active?'timer-live':''}" id="timer-${e.id}">${formatTimer(remaining)}</span>${active?`<span class="status-pill exercise-running">Exercise in progress</span>`:''}${run.completed?`<span class="status-pill">Completed ${indiaTimeString(run.completedAt)}</span>`:''}${anotherActive?`<span class="status-pill">Another exercise is running</span>`:''}</div>
     </div>`;
   }).join("");
-  Object.entries(state.exerciseRuns).forEach(([id,v])=>{const el=$(`timer-${id}`);if(el)el.textContent=formatTimer(v.remaining);});
+  const active=activeId && state.exerciseRuns[activeId];
+  if(active && !recordFor().exercise?.[activeId]?.completed) startExerciseCanvas(activeId);
 }
 function formatTimer(sec){sec=Math.max(0,Math.floor(sec));return `${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`}
 
 async function startExercise(id){
   const ex=state.exercises.find(x=>x.id===id); if(!ex)return;
-  if(recordFor().exercise?.[id]?.completed){return}
+  if(recordFor().exercise?.[id]?.completed)return;
+  const activeId=getActiveExerciseId();
+  if(activeId && activeId!==id){showToast("Finish the current exercise before starting another.");return;}
+  if(activeId===id && state.exerciseRuns[id])return;
 
-  // Rehydrate a run that may have been started before a refresh/tab close.
   let run=state.exerciseRuns[id] || loadPersistedExerciseRun(id,ex);
-  if(run?.interval) return;
-
-  const duration=Number(ex.duration||1)*60;
+  const duration=Math.max(1,Number(ex.duration||1))*60;
   const startedAt=run?.startedAt || Date.now();
   const elapsed=Math.floor((Date.now()-startedAt)/1000);
-  let remaining=Math.max(0,duration-elapsed);
+  const remaining=Math.max(0,duration-elapsed);
   run={startedAt,duration,remaining};
   state.exerciseRuns[id]=run;
+  setActiveExerciseId(id);
   persistExerciseRun(id,run);
   renderExercises();
 
   const tick=async()=>{
     const current=state.exerciseRuns[id];
-    if(!current) return;
-    remaining=Math.max(0,current.duration-Math.floor((Date.now()-current.startedAt)/1000));
-    current.remaining=remaining;
-    const el=$(`timer-${id}`); if(el)el.textContent=formatTimer(remaining);
-
-    if(remaining<=0){
-      clearInterval(current.interval);
-      current.interval=null;
+    if(!current)return;
+    const left=Math.max(0,current.duration-Math.floor((Date.now()-current.startedAt)/1000));
+    current.remaining=left;
+    const el=$(`timer-${id}`); if(el)el.textContent=formatTimer(left);
+    if(left<=0){
+      clearInterval(current.interval); current.interval=null;
       clearPersistedExerciseRun(id);
-      const startedIso=new Date(current.startedAt).toISOString();
-      await setExerciseRecord(id,{completed:true,startedAt:startedIso,completedAt:new Date().toISOString(),actualDuration:Number(ex.duration)*60});
-      current.remaining=0; renderAll(); showToast(`${ex.name} completed`);
+      const completedAt=new Date().toISOString();
+      await setExerciseRecord(id,{completed:true,startedAt:new Date(current.startedAt).toISOString(),completedAt,actualDuration:Number(ex.duration||1)*60});
+      delete state.exerciseRuns[id];
+      setActiveExerciseId(null);
+      renderAll();
+      showToast(`${ex.name} completed`);
     }
   };
 
-  if(remaining<=0){ await tick(); return; }
+  if(remaining<=0){await tick();return;}
   state.exerciseRuns[id].interval=setInterval(tick,1000);
+  startExerciseCanvas(id);
   await tick();
 }
 
@@ -548,24 +660,18 @@ async function saveTodo(e){
   closeModal("todo-modal");e.target.reset();$("todo-required").checked=true;showToast("Task saved.");
 }
 async function saveExercise(e){
-  e.preventDefault();const id=$("exercise-id").value,f=$("exercise-video").files[0];
+  e.preventDefault();
+  const id=$("exercise-id").value;
   const data={name:$("exercise-name").value.trim(),time:$("exercise-time").value,duration:Number($("exercise-duration").value),updatedAt:serverTimestamp()};
-  if(f){
-    if(f.size>500*1024*1024)return showToast("Video is larger than 500 MB.");
-    try{
-      showToast("Uploading exercise video to Cloudinary…");
-      const media=await uploadToCloudinary(f,`munnar_trip/${state.user.uid}/exercise`);
-      data.videoUrl=media.url;data.videoName=f.name;data.videoPublicId=media.publicId;
-    }catch(err){showToast(err.message);return}
-  }else if(id){const old=state.exercises.find(x=>x.id===id);if(old?.videoUrl)data.videoUrl=old.videoUrl;if(old?.videoName)data.videoName=old.videoName}
-  if(id)await updateDoc(doc(db,"users",state.user.uid,"exercises",id),data);else await addDoc(collection(db,"users",state.user.uid,"exercises"),{...data,createdAt:serverTimestamp()});
-  closeModal("exercise-modal");e.target.reset();showToast("Exercise saved.");
+  if(id) await updateDoc(doc(db,"users",state.user.uid,"exercises",id),data);
+  else await addDoc(collection(db,"users",state.user.uid,"exercises"),{...data,createdAt:serverTimestamp()});
+  closeModal("exercise-modal"); e.target.reset(); showToast("Exercise saved.");
 }
 
 function openModal(id){$(id).classList.remove("hidden")}
 function closeModal(id){$(id).classList.add("hidden")}
 function editTodo(id){const t=state.todos.find(x=>x.id===id);if(!t)return;$("todo-id").value=id;$("todo-title").value=t.title;$("todo-time").value=t.time||"";$("todo-type").value=t.type||"task";$("todo-required").checked=t.required!==false;openModal("todo-modal")}
-function editExercise(id){const e=state.exercises.find(x=>x.id===id);if(!e)return;$("exercise-id").value=id;$("exercise-name").value=e.name;$("exercise-time").value=e.time||"";$("exercise-duration").value=e.duration||10;$("exercise-video-status").textContent=e.videoName||"Optional video (existing video will remain if no replacement is selected)";openModal("exercise-modal")}
+function editExercise(id){const e=state.exercises.find(x=>x.id===id);if(!e)return;$("exercise-id").value=id;$("exercise-name").value=e.name;$("exercise-time").value=e.time||"";$("exercise-duration").value=e.duration||10;openModal("exercise-modal")}
 
 function icsDate(date,time){
   const [h,m]=time.split(":").map(Number); const d=new Date(date); d.setHours(h,m,0,0);

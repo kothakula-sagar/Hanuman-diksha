@@ -192,15 +192,13 @@ function renderDashboard(){
   const complete=allRequiredComplete();
   $("today-status").textContent=complete?"Completed":"Pending";
   $("journey-state-pill").textContent=state.settings.startDate ? (day?`Day ${day} active`:"Upcoming"):"Not started";
-  $("complete-day-btn").disabled=!state.settings.startDate;
-  $("complete-day-btn").textContent=complete?"Today completed":"Mark today complete";
   const todos=state.todos.map(t=>({label:t.title,done:recordFor().todo?.[t.id]===true,time:t.time}));
   const ex=state.exercises.map(e=>({label:e.name,done:recordFor().exercise?.[e.id]?.completed===true,time:e.time}));
   const items=[...todos,...ex,{label:"JAI SRI RAM video",done:jaiComplete(),time:state.settings.jaiTime}];
   $("today-summary").innerHTML=items.length?items.map(x=>`<div class="summary-item"><div><b>${esc(x.label)}</b><small>${x.time||""}</small></div><span class="check ${x.done?"done":""}">${x.done?"✓":"•"}</span></div>`).join(""):`<div class="empty glass">Add your first daily task in Todo.</div>`;
   $("day-note").textContent=state.settings.resetOnMiss?"A missed required activity will mark the day missed and the next journey starts at Day 1.":"Reset mode is off. Missed days remain recorded without automatic reset.";
   $("jai-next-small").textContent=`Daily ${state.settings.jaiTime||"--:--"}`;
-  $("sita-small").textContent=`${state.sita.count||0} repetitions`;
+  $("sita-small").textContent=`${sitaDailyCount()} / 108 repetitions`;
   $("exercise-small").textContent=`${state.exercises.filter(e=>recordFor().exercise?.[e.id]?.completed).length}/${state.exercises.length} today`;
   $("todo-small").textContent=`${state.todos.filter(t=>recordFor().todo?.[t.id]).length}/${state.todos.length} completed`;
 }
@@ -284,7 +282,10 @@ async function setExerciseRecord(id,value){
 }
 async function saveRecord(key,r){
   if(!state.user)return;
-  await setDoc(doc(db,"users",state.user.uid,"dailyRecords",key),{...r,updatedAt:serverTimestamp()},{merge:true});
+  const complete=allRequiredComplete(key);
+  const next={...r,status:complete?"complete":"pending",updatedAt:serverTimestamp()};
+  state.records[key]={...r,status:complete?"complete":"pending"};
+  await setDoc(doc(db,"users",state.user.uid,"dailyRecords",key),next,{merge:true});
 }
 
 function renderJai(){
@@ -294,8 +295,28 @@ function renderJai(){
   const done=jaiComplete(); $("jai-status").textContent=done?"Completed today":"Not completed today";
   $("jai-start-btn").disabled=!state.jai.url || done;
 }
+function sitaDailyCount(dateKey=todayKey()){
+  return Math.min(108, Math.max(0, Number(recordFor(dateKey).sitaCount||0)));
+}
+
 function renderSita(){
-  const count=Number(state.sita.count||0); $("sita-count").textContent=count; $("sita-cycle").textContent=Math.floor(count/108)+1; $("sita-cycle-progress").textContent=`${count%108} / 108`;
+  const count=sitaDailyCount();
+  const total=108;
+  const pct=count/total;
+  const circumference=2*Math.PI*108;
+  const ring=$("sita-progress-ring");
+  if(ring){
+    ring.style.strokeDasharray=circumference;
+    ring.style.strokeDashoffset=circumference*(1-pct);
+  }
+  $("sita-count").textContent=count;
+  $("sita-cycle").textContent=count;
+  $("sita-cycle-progress").textContent=`${count} / ${total}`;
+  const btn=$("sita-add-btn");
+  if(btn){
+    btn.disabled=count>=total;
+    btn.textContent=count>=total ? "108 / 108 Completed" : "SITA RAM";
+  }
 }
 function nextTimeCountdown(time){
   if(!time)return "--:--:--";
@@ -310,6 +331,14 @@ function nextTimeCountdown(time){
 function formatHMS(ms){let s=Math.floor(ms/1000),h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60);s%=60;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`}
 function updateCountdowns(){ $("jai-countdown").textContent=nextTimeCountdown(state.settings.jaiTime); $("sita-countdown").textContent=nextTimeCountdown(state.settings.sitaTime); }
 setInterval(updateCountdowns,1000);
+let lastRenderedIndiaDate=todayKey();
+setInterval(()=>{
+  const current=todayKey();
+  if(current!==lastRenderedIndiaDate){
+    lastRenderedIndiaDate=current;
+    renderAll();
+  }
+},1000);
 
 async function completeJai(){
   const v=$("jai-video"); if(!v.src)return;
@@ -338,12 +367,6 @@ async function toggleTodo(id){
   const key=todayKey(),r=recordFor(key);r.todo={...(r.todo||{}),[id]:!(r.todo?.[id]===true)};state.records[key]=r;
   await saveRecord(key,r);renderAll();
 }
-async function manualCompleteDay(){
-  if(!state.settings.startDate)return showToast("Set a start date first.");
-  if(!allRequiredComplete())return showToast("Complete all required items before marking the day done.");
-  const key=todayKey(),r=recordFor(key);r.manual=true;r.status="complete";state.records[key]=r;await saveRecord(key,r);renderAll();showToast("Today marked complete");
-}
-
 function renderCalendar(){
   const d=state.calendarMonth, y=d.getFullYear(),m=d.getMonth();
   $("cal-title").textContent=d.toLocaleDateString(undefined,{month:"long",year:"numeric"});
@@ -428,8 +451,6 @@ async function loadUser(){
   const snap=await getDoc(ref);
   if(snap.exists())state.settings={...state.settings,...snap.data()};
   else await setDoc(ref,{...state.settings,createdAt:serverTimestamp()});
-  const sr=await getDoc(doc(db,"users",state.user.uid,"meta","sita"));
-  if(sr.exists())state.sita={...state.sita,...sr.data()};
   const jr=await getDoc(doc(db,"users",state.user.uid,"meta","jai"));
   if(jr.exists())state.jai={...state.jai,...jr.data()};
   const tq=query(collection(db,"users",state.user.uid,"todos"),orderBy("time"));
@@ -563,7 +584,6 @@ $("mobile-menu").onclick=()=>$("sidebar").classList.toggle("open");
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
 document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>switchPage(b.dataset.go));
 $("signout-btn").onclick=()=>signOut(auth);
-$("complete-day-btn").onclick=manualCompleteDay;
 $("add-todo-btn").onclick=()=>{ $("todo-id").value=""; $("todo-form").reset();$("todo-required").checked=true;openModal("todo-modal");};
 $("exercise-settings-btn").onclick=()=>{ $("exercise-form").reset();$("exercise-id").value="";$("exercise-video-status").textContent="Optional video";openModal("exercise-modal");};
 $("save-settings-btn").onclick=saveSettings;
@@ -575,10 +595,21 @@ $("borrowing-form").onsubmit=saveBorrowing;
 document.querySelectorAll(".money-tab").forEach(b=>b.onclick=()=>{state.moneyTab=b.dataset.moneyTab;renderMoney()});
 $("jai-start-btn").onclick=completeJai;
 $("sita-add-btn").onclick=async()=>{
-  const count=Number(state.sita.count||0)+1;const cycle=Math.floor(count/108)+1;const completed=count%108===0;
-  state.sita={...state.sita,count,cycle,cycleCompletedAt:completed?new Date().toISOString():state.sita.cycleCompletedAt};
-  await setDoc(doc(db,"users",state.user.uid,"meta","sita"),state.sita,{merge:true});renderSita();renderDashboard();
-  if(completed)showToast("108 SITA RAM repetitions completed.");
+  const key=todayKey();
+  const current=sitaDailyCount(key);
+  if(current>=108){
+    renderSita();
+    return;
+  }
+  const count=current+1;
+  const r=recordFor(key);
+  r.sitaCount=count;
+  r.sitaUpdatedAt=new Date().toISOString();
+  state.records[key]=r;
+  await saveRecord(key,r);
+  renderSita();
+  renderDashboard();
+  if(count===108)showToast("108 SITA RAM repetitions completed for today.");
 };
 $("cal-prev").onclick=()=>{state.calendarMonth=new Date(state.calendarMonth.getFullYear(),state.calendarMonth.getMonth()-1,1);renderCalendar()};
 $("cal-next").onclick=()=>{state.calendarMonth=new Date(state.calendarMonth.getFullYear(),state.calendarMonth.getMonth()+1,1);renderCalendar()};

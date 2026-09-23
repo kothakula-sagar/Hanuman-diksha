@@ -90,7 +90,6 @@
                   <strong id="days-left">108</strong><span>days left</span>
                 </div>
               </div>
-              <button id="complete-day-btn" class="primary-btn wide">Mark today complete</button>
               <div id="day-note" class="helper"></div>
             </div>
 
@@ -151,9 +150,18 @@
         <section id="page-sitaram" class="page minimal-page">
           <div class="minimal-title">SITA RAM</div>
           <div class="sita-card glass">
-            <div class="sita-count" id="sita-count">0</div>
-            <div class="sita-sub">repetitions</div>
-            <div class="sita-cycle">Cycle <strong id="sita-cycle">1</strong> · <span id="sita-cycle-progress">0 / 108</span></div>
+            <div class="sita-progress" aria-label="SITA RAM daily progress">
+              <svg viewBox="0 0 260 260" class="sita-progress-svg" aria-hidden="true">
+                <circle class="sita-ring-track" cx="130" cy="130" r="108"></circle>
+                <circle class="sita-ring-value" id="sita-progress-ring" cx="130" cy="130" r="108"></circle>
+              </svg>
+              <div class="sita-progress-center">
+                <strong id="sita-count">0</strong>
+                <span id="sita-cycle-progress">0 / 108</span>
+              </div>
+            </div>
+            <div class="sita-sub">daily SITA RAM repetitions</div>
+            <div class="sita-cycle">Today · <strong id="sita-cycle">1</strong> / 108 complete</div>
             <button id="sita-add-btn" class="sita-btn">SITA RAM</button>
             <div class="countdown glass">
               <span>Next scheduled cycle</span>

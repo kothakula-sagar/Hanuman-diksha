@@ -93,3 +93,6 @@ select option{color:#111}
 .history-table thead th{position:sticky;top:0;z-index:2;background:rgba(200,70,0,.96);backdrop-filter:blur(6px)}
 .history-table tfoot td{position:sticky;bottom:0;z-index:2;background:rgba(200,70,0,.96);font-weight:800;border-top:2px solid rgba(255,255,255,.35);border-bottom:0}
 .history-table tfoot td:last-child{text-align:left}
+
+.danger-btn{border:0;border-radius:16px;padding:13px 17px;font-weight:800;color:#fff;background:#b3261e;box-shadow:0 8px 20px rgba(80,0,0,.3);cursor:pointer}
+.danger-btn:hover{background:#c9302a}.danger-btn:disabled{opacity:.55;cursor:not-allowed}

@@ -5,7 +5,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, deleteDoc, onSnapshot,
-  query, orderBy, serverTimestamp, where
+  query, orderBy, serverTimestamp, where, deleteField, writeBatch
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -212,6 +212,8 @@ function sitaComplete(dateKey=todayKey()){ return Number(recordFor(dateKey).sita
 
 // A day is complete ONLY when todo + exercises + JAI SRI RAM video + SITA RAM (108) are all done.
 function allRequiredComplete(dateKey=todayKey()){
+  // Days locked in by "Clear history" stay complete, even though their JAI/SITA history fields were deleted.
+  if(dateKey!==todayKey() && recordFor(dateKey).historyCleared===true) return true;
   return requiredTodoComplete(dateKey) && exerciseComplete(dateKey) && jaiComplete(dateKey) && sitaComplete(dateKey);
 }
 
@@ -629,6 +631,52 @@ async function saveSettings(){
   renderAll();showToast(oldStart!==state.settings.startDate?"Journey settings saved.":"Settings saved.");
 }
 
+
+// Removes ONLY the SITA RAM + JAI video history fields from every daily record (in Firestore),
+// so to-dos, exercises, calendar status and streak history stay intact.
+async function clearHistory(){
+  if(!state.user) return;
+  const targets=Object.entries(state.records).filter(([key,r])=>
+    r && (r.jai!==undefined || r.jaiCompletedAt!==undefined || r.sitaCount!==undefined ||
+          r.sitaCompletedAt!==undefined || r.sitaUpdatedAt!==undefined));
+  if(!targets.length){ showToast("No SITA RAM or video history to clear."); return; }
+  if(!confirm(`Delete SITA RAM and JAI SRI RAM video history for ${targets.length} day(s) from the database?\n\nThis cannot be undone.`)) return;
+  if(!confirm("Are you sure? All SITA RAM and video history will be permanently deleted.")) return;
+
+  const btn=$("clear-history-btn"); btn.disabled=true; btn.textContent="Clearing…";
+  // Remember which days were truly complete BEFORE the history fields disappear
+  const wasComplete={}; Object.keys(state.records).forEach(k=>{ wasComplete[k]=allRequiredComplete(k); });
+  const today=todayKey();
+  try{
+    // Firestore batches are limited to 500 writes
+    for(let i=0;i<targets.length;i+=400){
+      const batch=writeBatch(db);
+      targets.slice(i,i+400).forEach(([key])=>{
+        const upd={
+          jai:deleteField(), jaiCompletedAt:deleteField(),
+          sitaCount:deleteField(), sitaCompletedAt:deleteField(), sitaUpdatedAt:deleteField()
+        };
+        if(key!==today && wasComplete[key]) upd.historyCleared=true;   // keep the day counted as complete
+        batch.update(doc(db,"users",state.user.uid,"dailyRecords",key),upd);
+      });
+      await batch.commit();
+    }
+    // Local state is refreshed by the live dailyRecords listener; update immediately too.
+    targets.forEach(([key,r])=>{
+      const n={...r}; ["jai","jaiCompletedAt","sitaCount","sitaCompletedAt","sitaUpdatedAt"].forEach(k=>delete n[k]);
+      if(key!==today && wasComplete[key]) n.historyCleared=true;
+      state.records[key]=n;
+    });
+    renderAll();
+    showToast("SITA RAM and video history cleared.");
+  }catch(err){
+    console.error(err);
+    showToast("Could not clear history: "+(err.message||"unknown error"));
+  }finally{
+    btn.disabled=false; btn.textContent="Clear SITA RAM & video history";
+  }
+}
+
 async function uploadToCloudinary(file, folder){
   const cloud=state.settings.cloudinaryCloudName, preset=state.settings.cloudinaryUploadPreset;
   if(!cloud || !preset) throw new Error("Configure Cloudinary cloud name and unsigned upload preset in Settings first.");
@@ -724,6 +772,7 @@ $("signout-btn").onclick=()=>signOut(auth);
 $("add-todo-btn").onclick=()=>{ $("todo-id").value=""; $("todo-form").reset();$("todo-required").checked=true;openModal("todo-modal");};
 $("exercise-settings-btn").onclick=()=>{ $("exercise-form").reset();$("exercise-id").value="";$("exercise-video-status").textContent="Optional video";openModal("exercise-modal");};
 $("save-settings-btn").onclick=saveSettings;
+$("clear-history-btn").onclick=clearHistory;
 $("jai-upload").onchange=uploadJai;
 $("add-expense-btn").onclick=()=>{ $("expense-form").reset(); $("expense-id").value=""; $("expense-date").value=todayKey(); openModal("expense-modal"); };
 $("add-borrowing-btn").onclick=()=>{ $("borrowing-form").reset(); $("borrowing-id").value=""; $("borrowing-date").value=todayKey(); $("borrowing-status").value="outstanding"; openModal("borrowing-modal"); };

@@ -96,3 +96,147 @@ select option{color:#111}
 
 .danger-btn{border:0;border-radius:16px;padding:13px 17px;font-weight:800;color:#fff;background:#b3261e;box-shadow:0 8px 20px rgba(80,0,0,.3);cursor:pointer}
 .danger-btn:hover{background:#c9302a}.danger-btn:disabled{opacity:.55;cursor:not-allowed}
+
+/* ================= Motion, state screens & app navigation (same saffron theme) ================= */
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes fadeOut{to{opacity:0}}
+@keyframes pageIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes riseIn{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes popIn{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.1);opacity:1}100%{transform:scale(1)}}
+@keyframes cardPop{from{opacity:0;transform:scale(.9) translateY(12px)}to{opacity:1;transform:none}}
+@keyframes cardOut{to{opacity:0;transform:scale(.94) translateY(8px)}}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes sheetDown{to{transform:translateY(100%)}}
+@keyframes navUp{from{transform:translateY(140%)}to{transform:none}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes breathe{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.55);opacity:0}}
+@keyframes floatY{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes dotPulse{0%,80%,100%{transform:scale(.5);opacity:.4}40%{transform:scale(1);opacity:1}}
+@keyframes plusUp{from{opacity:1;transform:translate(-50%,0) scale(.8)}to{opacity:0;transform:translate(-50%,-80px) scale(1.25)}}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.14)}100%{transform:scale(1)}}
+@keyframes burst{from{opacity:1;transform:rotate(var(--r)) translateY(0) scale(1)}to{opacity:0;transform:rotate(var(--r)) translateY(var(--d)) scale(.4)}}
+@keyframes ripple{from{transform:scale(0);opacity:.5}to{transform:scale(2.8);opacity:0}}
+@keyframes glowPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.5),0 10px 24px rgba(90,20,0,.35)}50%{box-shadow:0 0 0 9px rgba(255,255,255,0),0 10px 24px rgba(90,20,0,.35)}}
+@keyframes toastBar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@keyframes offIn{from{transform:translate(-50%,-160%)}to{transform:translate(-50%,0)}}
+@keyframes livePulse{0%{box-shadow:0 0 0 0 rgba(229,57,53,.7)}100%{box-shadow:0 0 0 10px rgba(229,57,53,0)}}
+
+/* Boot / loading screen */
+.boot-screen{position:fixed;inset:0;z-index:400;display:grid;place-content:center;justify-items:center;gap:16px;transition:opacity .45s ease,visibility .45s;background:
+radial-gradient(circle at 12% 8%,rgba(255,183,0,.26),transparent 32%),radial-gradient(circle at 85% 28%,rgba(255,60,0,.38),transparent 34%),linear-gradient(145deg,#ff8a00 0%,#ff5a00 42%,#e53b00 100%)}
+.boot-screen.done{opacity:0;visibility:hidden}
+.boot-mark{position:relative;animation:popIn .6s cubic-bezier(.2,1.3,.4,1) both}
+.boot-mark .brand-mark{width:88px;height:88px;border-radius:28px;font-size:40px;margin:0;position:relative;z-index:1}
+.boot-ring{position:absolute;inset:0;border-radius:28px;border:2px solid rgba(255,255,255,.7);animation:breathe 1.8s ease-out infinite}
+.boot-ring.r2{animation-delay:.9s}
+.boot-title{font:700 26px "Baloo 2",sans-serif;animation:fadeIn .6s .25s both}
+.boot-dots{display:flex;gap:7px}.boot-dots i{width:8px;height:8px;border-radius:50%;background:#fff;animation:dotPulse 1.2s infinite}.boot-dots i:nth-child(2){animation-delay:.15s}.boot-dots i:nth-child(3){animation-delay:.3s}
+
+/* Animated line icons (success / error / warning / info) */
+.svg-ico{width:100%;height:100%;fill:none;stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round}
+.svg-ico>*{stroke-dasharray:160;stroke-dashoffset:160;animation:draw .55s ease forwards}
+.svg-ico>*:nth-child(2){animation-delay:.3s}.svg-ico>*:nth-child(3){animation-delay:.45s}
+.svg-ico.ok{stroke:#38b56b}.svg-ico.err{stroke:#e53935}.svg-ico.warn{stroke:#ff6a00}.svg-ico.info{stroke:#d94a00}
+
+/* Toasts: dark pill with animated icon + countdown bar */
+.toast{display:flex;align-items:center;gap:12px;overflow:hidden;transform:translateY(14px) scale(.96);transition:opacity .25s,transform .35s cubic-bezier(.2,1.3,.4,1)}
+.toast .t-icon{flex:none;width:30px;height:30px;padding:3px;border-radius:50%;background:rgba(255,255,255,.95)}
+.toast .t-msg{font-size:14px;line-height:1.35}
+.toast .t-bar{position:absolute;left:0;bottom:0;height:3px;width:100%;transform-origin:left;background:#fff;opacity:.7}
+.toast.show .t-bar{animation:toastBar 3.2s linear forwards}
+.toast.success .t-bar{background:#38b56b}.toast.error .t-bar{background:#e53935}.toast.warning .t-bar{background:#ffc107}
+.toast.error.show .t-icon{animation:shake .45s .3s}
+
+/* Full-screen state screens: celebration, confirm, error */
+.state-screen{position:fixed;inset:0;z-index:300;display:grid;place-items:center;padding:20px;background:rgba(40,12,0,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);animation:fadeIn .25s both}
+.state-screen.closing{animation:fadeOut .2s forwards}.state-screen.closing .state-card{animation:cardOut .2s forwards}
+.state-card{position:relative;z-index:1;width:min(400px,100%);padding:30px 24px 22px;border-radius:30px;text-align:center;border:1px solid var(--border);box-shadow:var(--shadow),inset 0 1px rgba(255,255,255,.2);background:linear-gradient(145deg,#ff8a00,#ff5a00 55%,#e53b00);animation:cardPop .45s cubic-bezier(.2,1.25,.4,1) both}
+.state-icon{width:96px;height:96px;margin:0 auto;padding:14px;border-radius:50%;background:rgba(255,255,255,.95);box-shadow:0 14px 34px rgba(90,20,0,.3);animation:popIn .5s .1s cubic-bezier(.2,1.3,.4,1) both}
+.state-screen.error .state-icon{animation:popIn .5s .1s both,shake .5s .7s}
+.state-screen.success .state-icon{animation:popIn .5s .1s both,glowPulse 2.4s 1s infinite}
+.state-card h3{font:700 28px "Baloo 2",sans-serif;margin:16px 0 4px}
+.state-card p{margin:0 0 20px;color:rgba(255,255,255,.88);line-height:1.5;font-size:14px}
+.state-actions{justify-content:center}.state-actions button{flex:1;min-width:120px}
+.state-burst{position:absolute;left:50%;top:44%;width:0;height:0;pointer-events:none;z-index:2}
+.state-burst i{position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:3px;opacity:0;animation:burst 1.2s cubic-bezier(.1,.7,.3,1) forwards}
+
+/* Offline pill */
+.offline-bar{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top,0px));transform:translate(-50%,0);z-index:250;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:999px;background:rgba(30,15,8,.92);border:1px solid rgba(255,255,255,.2);font-size:13px;font-weight:700;white-space:nowrap;max-width:calc(100vw - 24px);animation:offIn .4s cubic-bezier(.2,1.2,.4,1)}
+.offline-bar .pulse{flex:none;width:10px;height:10px;border-radius:50%;background:#e53935;animation:livePulse 1.4s infinite}
+@media(max-width:560px){.offline-bar{white-space:normal;font-size:12px}}
+
+/* Page transitions + staggered card entrance on page switch */
+.page.active{animation:pageIn .38s ease both}
+.page.entering .glass{animation:riseIn .5s cubic-bezier(.2,.8,.3,1) both}
+.page.entering .glass:nth-child(2){animation-delay:.05s}.page.entering .glass:nth-child(3){animation-delay:.1s}.page.entering .glass:nth-child(4){animation-delay:.15s}.page.entering .glass:nth-child(5){animation-delay:.2s}.page.entering .glass:nth-child(n+6){animation-delay:.25s}
+
+/* Press feedback */
+.primary-btn,.secondary-btn,.icon-btn,.danger-btn,.feature-card,.task-check,.money-tab,.nav-item,.sita-btn,.text-btn,.sheet-item{transition:transform .15s ease,background .2s,box-shadow .2s,border-color .2s;-webkit-tap-highlight-color:transparent}
+:is(.primary-btn,.secondary-btn,.icon-btn,.danger-btn,.feature-card,.task-check,.money-tab,.sita-btn,.sheet-item):active:not(:disabled){transform:scale(.96)}
+@media(hover:hover){.feature-card:hover{transform:translateY(-3px);box-shadow:0 26px 60px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.2)}}
+
+/* Busy buttons (saving / signing in) */
+.is-busy{position:relative;color:transparent!important;pointer-events:none}
+.is-busy::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin .7s linear infinite}
+.primary-btn.is-busy::after{border-color:rgba(217,74,0,.25);border-top-color:#d94a00}
+.file-status.uploading::before{content:"";display:inline-block;vertical-align:-3px;width:14px;height:14px;margin-right:8px;border-radius:50%;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin .7s linear infinite}
+
+/* Empty states */
+.empty::before{content:"🚩";display:block;font-size:34px;margin-bottom:8px;animation:floatY 2.4s ease-in-out infinite}
+.history-empty{animation:fadeIn .4s both}
+
+/* Todo tick pop */
+.task-card[data-pop]{animation:bump .45s ease var(--pop-delay,0s) both}.task-card[data-pop] .task-check{animation:popIn .45s cubic-bezier(.2,1.3,.4,1) var(--pop-delay,0s) both}
+
+/* SITA RAM tap effects */
+.sita-card{position:relative}
+.sita-btn{position:relative;overflow:hidden}
+.sita-btn .rip{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;background:rgba(255,106,0,.35);animation:ripple .6s ease-out forwards;pointer-events:none}
+.float-plus{position:absolute;left:50%;top:34%;z-index:3;font:800 30px "Baloo 2",sans-serif;color:#fff;pointer-events:none;text-shadow:0 4px 14px rgba(90,20,0,.45);animation:plusUp .8s ease-out forwards}
+#sita-count.bump{display:inline-block;animation:bump .3s ease}
+.sita-progress.complete .sita-ring-value{filter:drop-shadow(0 0 8px rgba(255,255,255,.85))}
+.canvas-badge{transition:background .2s}.exercise-card.exercise-active .canvas-badge{animation:fadeIn .4s both}
+
+/* Modals: pop in on web */
+.modal:not(.hidden) .modal-backdrop{animation:fadeIn .25s both}
+.modal:not(.hidden) .modal-card{animation:cardPop .35s cubic-bezier(.2,1.2,.4,1) both}
+
+/* ---------- Phone app layout (html.is-app) — website layout is unchanged ---------- */
+.bottom-nav,.sheet{display:none}
+html.is-app .sidebar,html.is-app #mobile-menu,html.is-app #signout-btn{display:none!important}
+html.is-app .layout{display:block;padding:0 10px calc(112px + env(safe-area-inset-bottom,0px))}
+html.is-app .topbar{top:calc(8px + env(safe-area-inset-top,0px));margin:calc(8px + env(safe-area-inset-top,0px)) 10px 8px;min-height:58px}
+html.is-app .minimal-page{min-height:auto}
+html.is-app .toast{left:12px;right:12px;top:calc(12px + env(safe-area-inset-top,0px));bottom:auto;max-width:none;transform:translateY(-18px) scale(.97)}
+html.is-app .toast.show{transform:none}
+
+html.is-app .bottom-nav{display:grid;position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:60;grid-template-columns:repeat(5,1fr);align-items:end;padding:8px 4px;border-radius:26px;border:1px solid var(--border);box-shadow:0 18px 40px rgba(60,15,0,.35),inset 0 1px rgba(255,255,255,.16);background:linear-gradient(135deg,rgba(150,45,0,.6),rgba(110,30,0,.55));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);animation:navUp .55s cubic-bezier(.2,1,.3,1) both}
+.bn-item{display:flex;flex-direction:column;align-items:center;gap:3px;border:0;background:none;color:rgba(255,255,255,.72);font:700 10.5px Inter,system-ui,sans-serif;padding:2px 0;-webkit-tap-highlight-color:transparent;min-width:0}
+.bn-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.bn-item i{font-style:normal;font-size:19px;line-height:1;width:48px;height:32px;display:grid;place-items:center;border-radius:14px;transition:background .25s,color .25s,transform .3s cubic-bezier(.2,1.4,.4,1)}
+.bn-item.active{color:#fff}
+.bn-item.active i{background:rgba(255,255,255,.94);color:#d94a00;transform:translateY(-2px)}
+.bn-item:active i{transform:scale(.86)}
+.bn-center i{width:60px;height:60px;border-radius:50%;margin-top:-32px;font-size:27px;background:rgba(255,255,255,.94);color:#d94a00;border:3px solid rgba(255,140,40,.9);animation:glowPulse 2.6s infinite}
+.bn-center.active i{background:#fff;transform:translateY(-4px) scale(1.06)}
+
+html.is-app .sheet{display:block;position:fixed;inset:0;z-index:90}
+.sheet-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:fadeIn .25s both}
+.sheet-card{position:absolute;left:0;right:0;bottom:0;padding:10px 16px calc(20px + env(safe-area-inset-bottom,0px));border-radius:28px 28px 0 0;border:1px solid var(--border);border-bottom:0;background:linear-gradient(145deg,#ff8a00,#ff5a00 55%,#e53b00);box-shadow:0 -18px 50px rgba(60,15,0,.35);animation:sheetUp .35s cubic-bezier(.2,1,.3,1) both}
+.sheet.closing .sheet-card{animation:sheetDown .22s ease-in forwards}.sheet.closing .sheet-backdrop{animation:fadeOut .22s forwards}
+.sheet-handle{width:44px;height:5px;border-radius:5px;background:rgba(255,255,255,.55);margin:0 auto 16px}
+.sheet-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.sheet-item{display:flex;align-items:center;gap:12px;padding:14px;border-radius:18px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.12);color:#fff;font-weight:800;text-align:left;animation:riseIn .4s both}
+.sheet-item:nth-child(2){animation-delay:.04s}.sheet-item:nth-child(3){animation-delay:.08s}.sheet-item:nth-child(4){animation-delay:.12s}
+.sheet-item i{font-style:normal;font-size:20px;flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.18)}
+.sheet-item.active{background:rgba(255,255,255,.94);color:#d94a00}.sheet-item.active i{background:rgba(217,74,0,.12)}
+.sheet-signout{width:100%;margin-top:12px}
+
+/* Forms open as bottom sheets inside the app */
+html.is-app .modal{place-items:end stretch;padding:0}
+html.is-app .modal-card{width:100%;border-radius:28px 28px 0 0;max-height:88vh;padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));background:linear-gradient(145deg,#ff8a00,#ff5a00 55%,#e53b00)}
+html.is-app .modal:not(.hidden) .modal-card{animation:sheetUp .35s cubic-bezier(.2,1,.3,1) both}
+
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0s!important;transition-duration:.01ms!important}}

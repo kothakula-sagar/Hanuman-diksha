@@ -172,7 +172,80 @@ function startExerciseCanvas(id){
 }
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
-const showToast = msg => { const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(showToast.t); showToast.t=setTimeout(()=>t.classList.remove("show"),3000); };
+
+// ---- Animated feedback: toasts, state screens, busy buttons ----
+const ICONS = {
+  success:`<svg viewBox="0 0 52 52" class="svg-ico ok"><circle cx="26" cy="26" r="22"/><path d="M15 27l7 7 15-16"/></svg>`,
+  error:`<svg viewBox="0 0 52 52" class="svg-ico err"><circle cx="26" cy="26" r="22"/><path d="M18 18l16 16"/><path d="M34 18L18 34"/></svg>`,
+  warning:`<svg viewBox="0 0 52 52" class="svg-ico warn"><path d="M26 6L48 45H4z"/><path d="M26 20v12"/><path d="M26 38.5v.5"/></svg>`,
+  info:`<svg viewBox="0 0 52 52" class="svg-ico info"><circle cx="26" cy="26" r="22"/><path d="M26 24v12"/><path d="M26 16.5v.5"/></svg>`
+};
+function guessTone(msg){
+  const m=String(msg).toLowerCase();
+  if(/could not|failed|error|invalid|wrong|denied|larger than|auth\//.test(m)) return "error";
+  if(/allow|configure|set a |finish the|missed|first/.test(m)) return "warning";
+  if(/completed|saved|deleted|uploaded|cleared|back online|set for/.test(m)) return "success";
+  return "info";
+}
+const showToast = (msg, tone) => {
+  const t=$("toast"); tone=ICONS[tone]?tone:guessTone(msg);
+  t.className=`toast ${tone}`;
+  t.innerHTML=`<span class="t-icon">${ICONS[tone]}</span><span class="t-msg">${esc(msg)}</span><i class="t-bar"></i>`;
+  void t.offsetWidth; t.classList.add("show");
+  clearTimeout(showToast.t); showToast.t=setTimeout(()=>t.classList.remove("show"),3200);
+};
+
+function makeBurst(){
+  const colors=["#fff","#ffc107","#ff8a00","#ffe08a","#ff3d00"];
+  return Array.from({length:30},(_,i)=>`<i style="--r:${Math.round(i*12+Math.random()*10)}deg;--d:${-Math.round(110+Math.random()*130)}px;background:${colors[i%colors.length]};animation-delay:${(Math.random()*.15).toFixed(2)}s"></i>`).join("");
+}
+// One state screen at a time; later calls wait their turn. Resolves true (OK) / false (Cancel or tap outside).
+let stateQueue=Promise.resolve();
+function showState(opts){
+  const p=stateQueue.then(()=>openState(opts));
+  stateQueue=p.catch(()=>{});
+  return p;
+}
+function openState({tone="success",title="",message="",okText="OK",cancelText=null,danger=false,burst=false}){
+  return new Promise(resolve=>{
+    const s=$("state-screen"), ok=$("state-ok"), cancel=$("state-cancel");
+    s.className=`state-screen ${tone}`;
+    $("state-icon").innerHTML=ICONS[tone]||ICONS.info;
+    $("state-title").textContent=title; $("state-message").textContent=message;
+    ok.textContent=okText; ok.className=danger?"danger-btn":"primary-btn";
+    cancel.textContent=cancelText||""; cancel.classList.toggle("hidden",!cancelText);
+    $("state-burst").innerHTML=burst?makeBurst():"";
+    const done=v=>{
+      ok.onclick=cancel.onclick=s.onclick=null;
+      s.classList.add("closing");
+      setTimeout(()=>{ s.classList.add("hidden"); s.classList.remove("closing"); resolve(v); },200);
+    };
+    ok.onclick=()=>done(true); cancel.onclick=()=>done(false);
+    s.onclick=e=>{ if(e.target===s) done(false); };
+    setTimeout(()=>ok.focus({preventScroll:true}),60);
+  });
+}
+const confirmDialog=(title,message,{okText="Yes",danger=false}={})=>showState({tone:"warning",title,message,okText,cancelText:"Cancel",danger});
+const celebrate=(title,message)=>showState({tone:"success",title,message,okText:"Jai Shri Ram 🚩",burst:true});
+
+// Wraps a submit/click handler: spinner on the button while it runs, error toast if it throws.
+const busy=fn=>async e=>{
+  e?.preventDefault?.();
+  const b=e?.submitter||(e?.currentTarget?.tagName==="BUTTON"?e.currentTarget:e?.target?.querySelector?.('button[type="submit"]'));
+  if(b?.classList.contains("is-busy")) return;
+  if(b){ b.classList.add("is-busy"); b.disabled=true; }
+  try{ await fn(e); }
+  catch(err){ console.error(err); showToast(String(err?.message||"Something went wrong").replace("Firebase: ",""),"error"); }
+  finally{ if(b){ b.classList.remove("is-busy"); b.disabled=false; } }
+};
+
+// Short-lived "pop" animation that survives re-renders (continues via negative delay instead of restarting).
+const popFx={};
+function popAttr(id){
+  const p=popFx[id]; if(!p) return "";
+  const elapsed=Date.now()-p; if(elapsed>450){ delete popFx[id]; return ""; }
+  return `data-pop style="--pop-delay:-${elapsed}ms"`;
+}
 
 function journeyStart(){
   return state.settings.startDate ? dateFromKey(state.settings.startDate) : null;
@@ -323,7 +396,7 @@ function renderTodo(){
   if(!state.todos.length){box.innerHTML=`<div class="empty glass">No tasks yet. Add the discipline items you want to track each day.</div>`;return}
   box.innerHTML=state.todos.slice().sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(t=>{
     const done=recordFor().todo?.[t.id]===true;
-    return `<div class="task-card glass ${done?"done":""}">
+    return `<div class="task-card glass ${done?"done":""}" ${popAttr(t.id)}>
       <button class="task-check" data-todo-toggle="${t.id}">${done?"✓":""}</button>
       <div><div class="task-title">${esc(t.title)}</div><div class="task-meta">${esc(t.time||"")} · ${t.type==="avoid"?"Avoid":"Task"} · ${t.required!==false?"Required":"Optional"}</div></div>
       <div class="task-actions"><button class="icon-btn" data-todo-edit="${t.id}">✎</button><button class="icon-btn" data-todo-delete="${t.id}">×</button></div>
@@ -396,11 +469,11 @@ async function startExercise(id){
       clearInterval(current.interval); current.interval=null;
       clearPersistedExerciseRun(id);
       const completedAt=new Date().toISOString();
-      await setExerciseRecord(id,{completed:true,startedAt:new Date(current.startedAt).toISOString(),completedAt,actualDuration:Number(ex.duration||1)*60});
+      const dayDone=await setExerciseRecord(id,{completed:true,startedAt:new Date(current.startedAt).toISOString(),completedAt,actualDuration:Number(ex.duration||1)*60});
       delete state.exerciseRuns[id];
       setActiveExerciseId(null);
       renderAll();
-      showToast(`${ex.name} completed`);
+      if(!dayDone) showToast(`${ex.name} completed`,"success");
     }
   };
 
@@ -414,14 +487,27 @@ async function setExerciseRecord(id,value){
   const key=todayKey(), r=recordFor(key);
   r.exercise={...(r.exercise||{}),[id]:value}; state.records[key]=r;
   if(value?.completed) clearPersistedExerciseRun(id);
-  await saveRecord(key,r);
+  return saveRecord(key,r);
 }
+// Returns true when this save just completed today's whole sadhana (and shows the celebration once per day).
 async function saveRecord(key,r){
-  if(!state.user)return;
+  if(!state.user)return false;
+  const wasComplete=r.status==="complete";
   const complete=allRequiredComplete(key);
   const next={...r,status:complete?"complete":"pending",updatedAt:serverTimestamp()};
   state.records[key]={...r,status:complete?"complete":"pending"};
+  let dayDone=false;
+  if(key===todayKey() && complete && !wasComplete){
+    const flag=`hanuman-diksha:celebrated:${state.user.uid}:${key}`;
+    let seen=false; try{ seen=!!localStorage.getItem(flag); localStorage.setItem(flag,"1"); }catch{}
+    if(!seen){
+      dayDone=true;
+      const s=streak();
+      celebrate(`Day ${currentDay()||1} complete!`,`Every activity for today is done. Streak: ${s} day${s===1?"":"s"}. Jai Shri Ram.`);
+    }
+  }
   await setDoc(doc(db,"users",state.user.uid,"dailyRecords",key),next,{merge:true});
+  return dayDone;
 }
 
 function renderJai(){
@@ -461,11 +547,24 @@ function renderSita(){
   $("sita-count").textContent=count;
   $("sita-cycle").textContent=count;
   $("sita-cycle-progress").textContent=`${count} / ${total}`;
+  document.querySelector(".sita-progress")?.classList.toggle("complete",count>=total);
   const btn=$("sita-add-btn");
   if(btn){
     btn.disabled=count>=total;
-    btn.textContent=count>=total ? "Completed for today ✓" : "SITA RAM";
+    const label=count>=total ? "Completed for today ✓" : "SITA RAM";
+    if(btn.dataset.label!==label){ btn.textContent=label; btn.dataset.label=label; }  // don't wipe the tap ripple
   }
+}
+function sitaTapFx(e){
+  const btn=$("sita-add-btn"), r=btn.getBoundingClientRect();
+  const fromPointer=e && e.detail>0;
+  const rip=document.createElement("span"); rip.className="rip";
+  rip.style.left=((fromPointer?e.clientX:r.left+r.width/2)-r.left)+"px";
+  rip.style.top=((fromPointer?e.clientY:r.top+r.height/2)-r.top)+"px";
+  btn.appendChild(rip); setTimeout(()=>rip.remove(),650);
+  const plus=document.createElement("span"); plus.className="float-plus"; plus.textContent="+1";
+  document.querySelector(".sita-card").appendChild(plus); setTimeout(()=>plus.remove(),850);
+  const c=$("sita-count"); c.classList.remove("bump"); void c.offsetWidth; c.classList.add("bump");
 }
 function renderSitaHistory(){
   const body=$("sita-history-body"), empty=$("sita-history-empty"), foot=$("sita-history-foot");
@@ -522,11 +621,14 @@ $("jai-video").addEventListener("timeupdate",()=>{
 });
 $("jai-video").addEventListener("ended",async()=>{
   const key=todayKey(),r=recordFor(key);r.jai=true;r.jaiCompletedAt=new Date().toISOString();state.records[key]=r;
-  await saveRecord(key,r); renderAll(); showToast("JAI SRI RAM video completed");
+  const dayDone=await saveRecord(key,r); renderAll();
+  if(!dayDone) celebrate("JAI SRI RAM complete","Today's video is done. Keep going with the rest of your sadhana.");
 });
 
 async function toggleTodo(id){
   const key=todayKey(),r=recordFor(key);r.todo={...(r.todo||{}),[id]:!(r.todo?.[id]===true)};state.records[key]=r;
+  if(r.todo[id]) popFx[id]=Date.now();
+  renderTodo(); renderDashboard();   // instant feedback; Firestore sync follows
   await saveRecord(key,r);renderAll();
 }
 function renderCalendar(){
@@ -657,8 +759,8 @@ async function clearHistory(){
     r && (r.jai!==undefined || r.jaiCompletedAt!==undefined || r.sitaCount!==undefined ||
           r.sitaCompletedAt!==undefined || r.sitaUpdatedAt!==undefined));
   if(!targets.length){ showToast("No SITA RAM or video history to clear."); return; }
-  if(!confirm(`Delete SITA RAM and JAI SRI RAM video history for ${targets.length} day(s) from the database?\n\nThis cannot be undone.`)) return;
-  if(!confirm("Are you sure? All SITA RAM and video history will be permanently deleted.")) return;
+  if(!await confirmDialog("Clear history?",`Delete SITA RAM and JAI SRI RAM video history for ${targets.length} day(s) from the database? This cannot be undone.`,{okText:"Continue",danger:true})) return;
+  if(!await confirmDialog("Are you sure?","All SITA RAM and video history will be permanently deleted.",{okText:"Delete forever",danger:true})) return;
 
   const btn=$("clear-history-btn"); btn.disabled=true; btn.textContent="Clearing…";
   // Remember which days were truly complete BEFORE the history fields disappear
@@ -685,10 +787,10 @@ async function clearHistory(){
       state.records[key]=n;
     });
     renderAll();
-    showToast("SITA RAM and video history cleared.");
+    showState({tone:"success",title:"History cleared",message:"SITA RAM and video history were deleted. Your calendar and streak are unchanged."});
   }catch(err){
     console.error(err);
-    showToast("Could not clear history: "+(err.message||"unknown error"));
+    showState({tone:"error",title:"Couldn't clear history",message:err.message||"Unknown error. Check your connection and try again.",okText:"Close"});
   }finally{
     btn.disabled=false; btn.textContent="Clear SITA RAM & video history";
   }
@@ -711,14 +813,17 @@ async function uploadToCloudinary(file, folder){
 async function uploadJai(){
   const f=$("jai-upload").files[0]; if(!f)return;
   if(f.size>500*1024*1024)return showToast("Video is larger than 500 MB.");
+  const status=$("jai-file-name");
   try{
-    showToast("Uploading JAI SRI RAM video to Cloudinary…");
+    showToast("Uploading JAI SRI RAM video to Cloudinary…","info");
+    status.classList.add("uploading"); status.textContent=`Uploading ${f.name}…`;
     const media=await uploadToCloudinary(f,`munnar_trip/${state.user.uid}/jai`);
     state.jai={url:media.url,fileName:f.name,publicId:media.publicId,resourceType:media.resourceType,uploadedAt:new Date().toISOString()};
     await setDoc(doc(db,"users",state.user.uid,"meta","jai"),state.jai,{merge:true});
+    status.classList.remove("uploading");
     renderAll();
-    showToast("Video uploaded. Firebase stored the public URL only.");
-  }catch(err){showToast(err.message)}
+    showToast("Video uploaded. Firebase stored the public URL only.","success");
+  }catch(err){ status.classList.remove("uploading"); renderSettings(); showToast(err.message,"error"); }
 }
 
 async function saveTodo(e){
@@ -776,19 +881,56 @@ function showCalendarLinks(){
   }).join("");
 }
 
-function switchPage(page){
-  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("active",p.id===`page-${page}`));
-  document.querySelectorAll(".nav-item").forEach(n=>n.classList.toggle("active",n.dataset.page===page));
-  $("sidebar").classList.remove("open");
+// ---- Navigation: sidebar (website), bottom nav + "More" sheet (phone app), Android back button via history ----
+const PAGES=[...document.querySelectorAll(".page")].map(p=>p.id.replace("page-",""));
+const MORE_PAGES=["exercise","calendar","money","settings"];
+let currentPage="dashboard";
+function openSheet(){ $("more-sheet").classList.remove("hidden","closing"); }
+function closeSheet(){
+  const s=$("more-sheet"); if(s.classList.contains("hidden")||s.classList.contains("closing")) return;
+  s.classList.add("closing"); setTimeout(()=>{ s.classList.add("hidden"); s.classList.remove("closing"); },220);
+}
+function switchPage(page,{push=true}={}){
+  if(!PAGES.includes(page)) page="dashboard";
+  closeSheet(); $("sidebar").classList.remove("open");
+  if(page===currentPage && $(`page-${page}`).classList.contains("active")) return;
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active","entering"));
+  const el=$(`page-${page}`); el.classList.add("active","entering");
+  clearTimeout(switchPage.t); switchPage.t=setTimeout(()=>el.classList.remove("entering"),800);
+  document.querySelectorAll("[data-page]").forEach(n=>n.classList.toggle("active",n.dataset.page===page));
+  document.querySelector("[data-more]")?.classList.toggle("active",MORE_PAGES.includes(page));
+  if(push) history.pushState({page},"",`#${page}`);
+  currentPage=page;
+  window.scrollTo(0,0);
+}
+window.addEventListener("popstate",e=>{
+  document.querySelectorAll(".modal:not(.hidden)").forEach(m=>m.classList.add("hidden"));
+  switchPage(e.state?.page||location.hash.slice(1)||"dashboard",{push:false});
+});
+const startPage=location.hash.slice(1);
+if(PAGES.includes(startPage) && startPage!=="dashboard") switchPage(startPage,{push:false});
+history.replaceState({page:currentPage},"");
+
+async function confirmSignOut(){
+  if(await confirmDialog("Sign out?","You can sign back in anytime with your email and password.",{okText:"Sign out"})){ closeSheet(); await signOut(auth); }
 }
 
 $("mobile-menu").onclick=()=>$("sidebar").classList.toggle("open");
-document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
+document.querySelectorAll("[data-page]").forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
 document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>switchPage(b.dataset.go));
-$("signout-btn").onclick=()=>signOut(auth);
+document.querySelector("[data-more]").onclick=()=>$("more-sheet").classList.contains("hidden")?openSheet():closeSheet();
+document.querySelectorAll("[data-sheet-close]").forEach(b=>b.onclick=closeSheet);
+$("signout-btn").onclick=confirmSignOut;
+document.querySelectorAll("[data-signout]").forEach(b=>b.onclick=confirmSignOut);
+
+function updateOnline(){ $("offline-bar").classList.toggle("hidden",navigator.onLine); }
+window.addEventListener("offline",updateOnline);
+window.addEventListener("online",()=>{ updateOnline(); showToast("Back online. Syncing your progress.","success"); });
+updateOnline();
+
 $("add-todo-btn").onclick=()=>{ $("todo-id").value=""; $("todo-form").reset();$("todo-required").checked=true;openModal("todo-modal");};
-$("exercise-settings-btn").onclick=()=>{ $("exercise-form").reset();$("exercise-id").value="";$("exercise-video-status").textContent="Optional video";openModal("exercise-modal");};
-$("save-settings-btn").onclick=saveSettings;
+$("exercise-settings-btn").onclick=()=>{ $("exercise-form").reset();$("exercise-id").value="";openModal("exercise-modal");};
+$("save-settings-btn").onclick=busy(saveSettings);
 $("clear-history-btn").onclick=clearHistory;
 if(window.HanumanNative){
   $("native-card")?.classList.remove("hidden");
@@ -802,11 +944,11 @@ if(window.HanumanNative){
 $("jai-upload").onchange=uploadJai;
 $("add-expense-btn").onclick=()=>{ $("expense-form").reset(); $("expense-id").value=""; $("expense-date").value=todayKey(); openModal("expense-modal"); };
 $("add-borrowing-btn").onclick=()=>{ $("borrowing-form").reset(); $("borrowing-id").value=""; $("borrowing-date").value=todayKey(); $("borrowing-status").value="outstanding"; openModal("borrowing-modal"); };
-$("expense-form").onsubmit=saveExpense;
-$("borrowing-form").onsubmit=saveBorrowing;
+$("expense-form").onsubmit=busy(saveExpense);
+$("borrowing-form").onsubmit=busy(saveBorrowing);
 document.querySelectorAll(".money-tab").forEach(b=>b.onclick=()=>{state.moneyTab=b.dataset.moneyTab;renderMoney()});
 $("jai-start-btn").onclick=completeJai;
-$("sita-add-btn").onclick=async()=>{
+$("sita-add-btn").onclick=async e=>{
   const key=todayKey();
   const current=sitaDailyCount(key);
   if(current>=108){
@@ -819,28 +961,30 @@ $("sita-add-btn").onclick=async()=>{
   r.sitaUpdatedAt=new Date().toISOString();
   if(count===108 && !r.sitaCompletedAt) r.sitaCompletedAt=new Date().toISOString();
   state.records[key]=r;
-  await saveRecord(key,r);
+  sitaTapFx(e);
+  renderSita();
+  const dayDone=await saveRecord(key,r);
   renderSita();
   renderSitaHistory();
   renderDashboard();
-  if(count===108)showToast("108 SITA RAM repetitions completed for today.");
+  if(count===108 && !dayDone) celebrate("108 SITA RAM complete","Today's 108 repetitions are done. सीता राम.");
 };
 $("cal-prev").onclick=()=>{state.calendarMonth=new Date(state.calendarMonth.getFullYear(),state.calendarMonth.getMonth()-1,1);renderCalendar()};
 $("cal-next").onclick=()=>{state.calendarMonth=new Date(state.calendarMonth.getFullYear(),state.calendarMonth.getMonth()+1,1);renderCalendar()};
 $("calendar-export-btn").onclick=downloadICS;
 $("calendar-links-btn").onclick=showCalendarLinks;
-$("exercise-form").onsubmit=saveExercise;$("todo-form").onsubmit=saveTodo;
+$("exercise-form").onsubmit=busy(saveExercise);$("todo-form").onsubmit=busy(saveTodo);
 document.addEventListener("click",async e=>{
   const close=e.target.closest("[data-close]");if(close)closeModal(close.dataset.close);
   const tt=e.target.closest("[data-todo-toggle]");if(tt)await toggleTodo(tt.dataset.todoToggle);
   const te=e.target.closest("[data-todo-edit]");if(te)editTodo(te.dataset.todoEdit);
-  const td=e.target.closest("[data-todo-delete]");if(td){if(confirm("Delete this task?")){await deleteDoc(doc(db,"users",state.user.uid,"todos",td.dataset.todoDelete));showToast("Task deleted.");}}
+  const td=e.target.closest("[data-todo-delete]");if(td){if(await confirmDialog("Delete this task?","It will be removed from your daily list.",{okText:"Delete",danger:true})){await deleteDoc(doc(db,"users",state.user.uid,"todos",td.dataset.todoDelete));showToast("Task deleted.");}}
   const ee=e.target.closest("[data-ex-start]");if(ee)startExercise(ee.dataset.exStart);
   const ed=e.target.closest("[data-ex-edit]");if(ed)editExercise(ed.dataset.exEdit);
   const exed=e.target.closest("[data-expense-edit]");if(exed)editExpense(exed.dataset.expenseEdit);
-  const exdel=e.target.closest("[data-expense-delete]");if(exdel){if(confirm("Delete this expense?")){await deleteDoc(doc(db,"users",state.user.uid,"expenses",exdel.dataset.expenseDelete));showToast("Expense deleted.");}}
+  const exdel=e.target.closest("[data-expense-delete]");if(exdel){if(await confirmDialog("Delete this expense?","This entry will be removed permanently.",{okText:"Delete",danger:true})){await deleteDoc(doc(db,"users",state.user.uid,"expenses",exdel.dataset.expenseDelete));showToast("Expense deleted.");}}
   const bed=e.target.closest("[data-borrow-edit]");if(bed)editBorrowing(bed.dataset.borrowEdit);
-  const bdel=e.target.closest("[data-borrow-delete]");if(bdel){if(confirm("Delete this borrowing?")){await deleteDoc(doc(db,"users",state.user.uid,"borrowings",bdel.dataset.borrowDelete));showToast("Borrowing deleted.");}}
+  const bdel=e.target.closest("[data-borrow-delete]");if(bdel){if(await confirmDialog("Delete this borrowing?","This entry will be removed permanently.",{okText:"Delete",danger:true})){await deleteDoc(doc(db,"users",state.user.uid,"borrowings",bdel.dataset.borrowDelete));showToast("Borrowing deleted.");}}
 });
 
 let authModeRegister=false;
@@ -849,15 +993,32 @@ $("auth-toggle").onclick=()=>{
   $("auth-submit-label").textContent=authModeRegister?"Create account":"Sign in";
   $("auth-toggle").textContent=authModeRegister?"Already have an account? Sign in":"Create an account";
 };
-$("auth-form").onsubmit=async e=>{
-  e.preventDefault();const email=$("auth-email").value.trim(),pass=$("auth-password").value;
+$("auth-form").onsubmit=busy(async e=>{
+  const email=$("auth-email").value.trim(),pass=$("auth-password").value;
   try{if(authModeRegister)await createUserWithEmailAndPassword(auth,email,pass);else await signInWithEmailAndPassword(auth,email,pass);}
-  catch(err){showToast(err.message.replace("Firebase: ",""))}
-};
+  catch(err){
+    $("auth-form").closest(".auth-card").animate([{transform:"translateX(0)"},{transform:"translateX(-8px)"},{transform:"translateX(8px)"},{transform:"translateX(0)"}],{duration:360});
+    showToast(err.message.replace("Firebase: ",""),"error");
+  }
+});
+
+function hideBoot(){
+  const b=$("boot-screen"); if(!b||b.classList.contains("done")) return;
+  b.classList.add("done"); setTimeout(()=>b.remove(),600);
+}
+setTimeout(hideBoot,10000);   // never trap the user on the splash
 
 onAuthStateChanged(auth,async user=>{
   state.unsub.forEach(fn=>fn&&fn());state.unsub=[];
   state.user=user;
   $("auth-screen").classList.toggle("hidden",!!user);$("app-shell").classList.toggle("hidden",!user);
-  if(user){await loadUser(); if("serviceWorker" in navigator && !window.HanumanNative)navigator.serviceWorker.register("./sw.js").catch(()=>{}); /* native app already has local files */}
+  if(user){
+    try{ await loadUser(); }
+    catch(err){
+      console.error(err); hideBoot();
+      if(await showState({tone:"error",title:"Couldn't load your data",message:"Check your internet connection and try again.",okText:"Retry",cancelText:"Close"})) location.reload();
+    }
+    if("serviceWorker" in navigator && !window.HanumanNative)navigator.serviceWorker.register("./sw.js").catch(()=>{}); /* native app already has local files */
+  }
+  hideBoot();
 });

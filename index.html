@@ -13,11 +13,37 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // Phone app (Capacitor) gets the bottom-nav layout; the website keeps the sidebar. Add ?app=1 to preview it in a browser.
+    (function(){var c=window.Capacitor,app=false;try{app=!!(c&&c.isNativePlatform&&c.isNativePlatform())}catch(e){}
+      if(!app&&/[?&]app=1/.test(location.search))app=true;if(app)document.documentElement.classList.add("is-app");})();
+  </script>
   <script src="native-notifications.js"></script>
   <script type="module" src="app.js"></script>
 </head>
 <body>
-  <div id="toast" class="toast"></div>
+  <div id="boot-screen" class="boot-screen" aria-hidden="true">
+    <div class="boot-mark"><span class="boot-ring"></span><span class="boot-ring r2"></span><div class="brand-mark">श्री</div></div>
+    <div class="boot-title">Hanuman Disha</div>
+    <div class="boot-dots"><i></i><i></i><i></i></div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div id="offline-bar" class="offline-bar hidden" role="status"><span class="pulse"></span>You're offline. Progress will sync when you reconnect.</div>
+
+  <div id="state-screen" class="state-screen hidden" role="dialog" aria-modal="true" aria-labelledby="state-title">
+    <div id="state-burst" class="state-burst"></div>
+    <div class="state-card">
+      <div id="state-icon" class="state-icon"></div>
+      <h3 id="state-title"></h3>
+      <p id="state-message"></p>
+      <div class="button-row state-actions">
+        <button id="state-cancel" class="secondary-btn" type="button">Cancel</button>
+        <button id="state-ok" class="primary-btn" type="button">OK</button>
+      </div>
+    </div>
+  </div>
 
   <div id="auth-screen" class="auth-screen">
     <div class="auth-card glass">
@@ -393,6 +419,28 @@
           </div>
         </div>
       </main>
+    </div>
+
+    <!-- Phone app only: bottom navigation + "More" sheet (hidden on the website) -->
+    <nav id="bottom-nav" class="bottom-nav" aria-label="App navigation">
+      <button class="bn-item active" data-page="dashboard"><i>⌂</i><span>Home</span></button>
+      <button class="bn-item" data-page="todo"><i>✓</i><span>Todo</span></button>
+      <button class="bn-item bn-center" data-page="sitaram"><i>ॐ</i><span>SITA RAM</span></button>
+      <button class="bn-item" data-page="jai"><i>▶</i><span>JAI</span></button>
+      <button class="bn-item" data-more><i>⋯</i><span>More</span></button>
+    </nav>
+    <div id="more-sheet" class="sheet hidden">
+      <div class="sheet-backdrop" data-sheet-close></div>
+      <div class="sheet-card">
+        <div class="sheet-handle"></div>
+        <div class="sheet-grid">
+          <button class="sheet-item" data-page="exercise"><i>🏃</i><span>Exercise</span></button>
+          <button class="sheet-item" data-page="calendar"><i>▦</i><span>Calendar</span></button>
+          <button class="sheet-item" data-page="money"><i>₹</i><span>Expenses</span></button>
+          <button class="sheet-item" data-page="settings"><i>⚙</i><span>Settings</span></button>
+        </div>
+        <button class="secondary-btn sheet-signout" type="button" data-signout>↪ Sign out</button>
+      </div>
     </div>
   </div>
 </body>

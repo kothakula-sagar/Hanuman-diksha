@@ -6,12 +6,14 @@
   <meta name="theme-color" content="#ff6a00">
   <meta name="description" content="Hanuman Disha - 108 Day Sadhana Tracker">
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>Hanuman Disha · 108 Day Sadhana</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script src="native-notifications.js"></script>
   <script type="module" src="app.js"></script>
 </head>
 <body>
@@ -300,6 +302,22 @@
                 <button id="calendar-links-btn" class="secondary-btn">Show event links</button>
               </div>
               <div id="calendar-links" class="calendar-links hidden"></div>
+            </div>
+
+
+            <div id="native-card" class="settings-card glass hidden">
+              <h3>Phone reminders (iQOO / Android)</h3>
+              <p class="helper">Reminders are scheduled on your phone and work with the app closed. To stop iQOO from silencing them, do these once:</p>
+              <ol class="helper" style="padding-left:18px;margin:8px 0">
+                <li>Settings → Apps → Hanuman Disha → <b>Battery</b> → choose <b>Allow background activity / No restrictions</b>.</li>
+                <li>Settings → Apps → Hanuman Disha → <b>Notifications</b> → allow all.</li>
+                <li>Recent apps → pull down / long-press the app card → <b>Lock</b> it so it isn't cleared.</li>
+                <li>Tap the button below and allow <b>Alarms &amp; reminders</b>.</li>
+              </ol>
+              <div class="button-row">
+                <button id="native-exact-btn" class="secondary-btn" type="button">Allow exact alarms</button>
+                <button id="native-test-btn" class="secondary-btn" type="button">Send test reminder (1 min)</button>
+              </div>
             </div>
 
             <div class="settings-card glass">

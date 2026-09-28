@@ -1,0 +1,12 @@
+{
+  "appId": "com.sagar.hanumandisha",
+  "appName": "Hanuman Disha",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#FF6A00"
+    }
+  }
+}

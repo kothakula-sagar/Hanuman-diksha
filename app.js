@@ -275,8 +275,25 @@ function streak(){
   return s;
 }
 
+
+// ---- Native reminders (Android app only; no-op in the browser) ----
+let reminderTimer=null;
+function syncNativeReminders(){
+  if(!window.HanumanNative) return;
+  clearTimeout(reminderTimer);
+  reminderTimer=setTimeout(async()=>{
+    const items=[];
+    if(state.settings.jaiTime) items.push({key:"jai",time:state.settings.jaiTime,title:"JAI SRI RAM 🚩",body:"Time for today's JAI SRI RAM video."});
+    if(state.settings.sitaTime) items.push({key:"sita",time:state.settings.sitaTime,title:"SITA RAM ॐ",body:"Complete today's 108 SITA RAM."});
+    state.exercises.forEach(e=>{ if(e.time) items.push({key:"ex:"+e.id,time:e.time,title:"Exercise: "+e.name,body:`${e.duration||10} minutes — start now.`}); });
+    state.todos.forEach(t=>{ if(t.time) items.push({key:"todo:"+t.id,time:t.time,title:t.title,body:t.required===false?"Optional task":"Required task for today"}); });
+    const res=await window.HanumanNative.scheduleAll(items);
+    if(res && !res.ok && res.reason==="permission-denied") showToast("Allow notifications for Hanuman Disha in phone settings to get reminders.");
+  },800);
+}
+
 function renderAll(){
-  renderDashboard(); renderTodo(); renderExercises(); renderJai(); renderSita(); renderJaiHistory(); renderSitaHistory(); renderCalendar(); renderMoney(); renderSettings();
+  renderDashboard(); renderTodo(); renderExercises(); renderJai(); renderSita(); renderJaiHistory(); renderSitaHistory(); renderCalendar(); renderMoney(); renderSettings(); syncNativeReminders();
   $("today-label").textContent=new Date().toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
 }
 
@@ -773,6 +790,15 @@ $("add-todo-btn").onclick=()=>{ $("todo-id").value=""; $("todo-form").reset();$(
 $("exercise-settings-btn").onclick=()=>{ $("exercise-form").reset();$("exercise-id").value="";$("exercise-video-status").textContent="Optional video";openModal("exercise-modal");};
 $("save-settings-btn").onclick=saveSettings;
 $("clear-history-btn").onclick=clearHistory;
+if(window.HanumanNative){
+  $("native-card")?.classList.remove("hidden");
+  $("native-test-btn")?.addEventListener("click",async()=>{
+    const r=await window.HanumanNative.scheduleAll([{key:"test",time:(()=>{const d=new Date(Date.now()+60000);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");})(),title:"Test reminder 🚩",body:"If you see this, reminders work."}]);
+    showToast(r.ok?"Test reminder set for the next minute. Lock your phone and wait.":"Could not set reminder: "+(r.reason||"unknown"));
+    setTimeout(syncNativeReminders,90000);
+  });
+  $("native-exact-btn")?.addEventListener("click",()=>window.HanumanNative.openExactAlarmSettings());
+}
 $("jai-upload").onchange=uploadJai;
 $("add-expense-btn").onclick=()=>{ $("expense-form").reset(); $("expense-id").value=""; $("expense-date").value=todayKey(); openModal("expense-modal"); };
 $("add-borrowing-btn").onclick=()=>{ $("borrowing-form").reset(); $("borrowing-id").value=""; $("borrowing-date").value=todayKey(); $("borrowing-status").value="outstanding"; openModal("borrowing-modal"); };
@@ -833,5 +859,5 @@ onAuthStateChanged(auth,async user=>{
   state.unsub.forEach(fn=>fn&&fn());state.unsub=[];
   state.user=user;
   $("auth-screen").classList.toggle("hidden",!!user);$("app-shell").classList.toggle("hidden",!user);
-  if(user){await loadUser(); if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});}
+  if(user){await loadUser(); if("serviceWorker" in navigator && !window.HanumanNative)navigator.serviceWorker.register("./sw.js").catch(()=>{}); /* native app already has local files */}
 });

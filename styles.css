@@ -75,7 +75,7 @@ select option{color:#111}
 .history-card{width:min(760px,100%);margin-top:22px;padding:24px;border-radius:28px}
 .history-head{margin-bottom:16px}
 .history-head h3{margin:4px 0 0;font-size:24px}
-.history-table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:16px}
+.history-table-wrap{width:100%;max-height:260px;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:16px}
 .history-table{width:100%;min-width:420px;border-collapse:collapse;text-align:left}
 .history-table th,.history-table td{padding:13px 14px;border-bottom:1px solid rgba(255,255,255,.12);white-space:nowrap}
 .history-table th{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
@@ -88,3 +88,8 @@ select option{color:#111}
   .history-table{min-width:360px}
   .history-table th,.history-table td{padding:11px 10px}
 }
+
+/* Fixed-height history tables: header and total row stay visible while rows scroll */
+.history-table thead th{position:sticky;top:0;z-index:2;background:rgba(200,70,0,.96);backdrop-filter:blur(6px)}
+.history-table tfoot td{position:sticky;bottom:0;z-index:2;background:rgba(200,70,0,.96);font-weight:800;border-top:2px solid rgba(255,255,255,.35);border-bottom:0}
+.history-table tfoot td:last-child{text-align:left}

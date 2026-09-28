@@ -208,9 +208,11 @@ function exerciseComplete(dateKey=todayKey()){
   return req.every(e=>r.exercise?.[e.id]?.completed===true);
 }
 function jaiComplete(dateKey=todayKey()){ return recordFor(dateKey).jai===true; }
+function sitaComplete(dateKey=todayKey()){ return Number(recordFor(dateKey).sitaCount||0)>=108; }
 
+// A day is complete ONLY when todo + exercises + JAI SRI RAM video + SITA RAM (108) are all done.
 function allRequiredComplete(dateKey=todayKey()){
-  return requiredTodoComplete(dateKey) && exerciseComplete(dateKey) && jaiComplete(dateKey);
+  return requiredTodoComplete(dateKey) && exerciseComplete(dateKey) && jaiComplete(dateKey) && sitaComplete(dateKey);
 }
 
 function dayStatus(dateKey){
@@ -219,7 +221,7 @@ function dayStatus(dateKey){
   const n=dayIndex(dateKey);
   if(n>currentDay() || new Date(dateKey)>new Date()) return "upcoming";
   const r=recordFor(dateKey);
-  return allRequiredComplete(dateKey) || r.manual ? "complete" : "missed";
+  return allRequiredComplete(dateKey) ? "complete" : "missed";
 }
 
 let resetCheckRunning = false;
@@ -239,7 +241,7 @@ async function applyAutomaticResetIfNeeded(){
     for(let i=0; i<Number(state.settings.days||108); i++){
       if(cursor < start) break;
       const key = localDateKey(cursor);
-      if(!allRequiredComplete(key) && !recordFor(key).manual) lastMissed = key;
+      if(!allRequiredComplete(key)) lastMissed = key;
       cursor.setUTCDate(cursor.getUTCDate()-1);
     }
 
@@ -266,7 +268,7 @@ function streak(){
   let n=currentDay(), s=0;
   for(let i=n;i>=1;i--){
     const key=localDateKey(new Date(journeyStart().getTime()+(i-1)*86400000));
-    if(allRequiredComplete(key) || recordFor(key).manual) s++; else break;
+    if(allRequiredComplete(key)) s++; else break;
   }
   return s;
 }
@@ -288,7 +290,7 @@ function renderDashboard(){
   $("journey-state-pill").textContent=state.settings.startDate ? (day?`Day ${day} active`:"Upcoming"):"Not started";
   const todos=state.todos.map(t=>({label:t.title,done:recordFor().todo?.[t.id]===true,time:t.time}));
   const ex=state.exercises.map(e=>({label:e.name,done:recordFor().exercise?.[e.id]?.completed===true,time:e.time}));
-  const items=[...todos,...ex,{label:"JAI SRI RAM video",done:jaiComplete(),time:state.settings.jaiTime}];
+  const items=[...todos,...ex,{label:"JAI SRI RAM video",done:jaiComplete(),time:state.settings.jaiTime},{label:`SITA RAM (${sitaDailyCount()}/108)`,done:sitaComplete(),time:state.settings.sitaTime}];
   $("today-summary").innerHTML=items.length?items.map(x=>`<div class="summary-item"><div><b>${esc(x.label)}</b><small>${x.time||""}</small></div><span class="check ${x.done?"done":""}">${x.done?"✓":"•"}</span></div>`).join(""):`<div class="empty glass">Add your first daily task in Todo.</div>`;
   $("day-note").textContent=state.settings.resetOnMiss?"A missed required activity will mark the day missed and the next journey starts at Day 1.":"Reset mode is off. Missed days remain recorded without automatic reset.";
   $("jai-next-small").textContent=`Daily ${state.settings.jaiTime||"--:--"}`;
@@ -443,11 +445,11 @@ function renderSita(){
   const btn=$("sita-add-btn");
   if(btn){
     btn.disabled=count>=total;
-    btn.textContent=count>=total ? "108 / 108 Completed" : "SITA RAM";
+    btn.textContent=count>=total ? "Completed for today ✓" : "SITA RAM";
   }
 }
 function renderSitaHistory(){
-  const body=$("sita-history-body"), empty=$("sita-history-empty");
+  const body=$("sita-history-body"), empty=$("sita-history-empty"), foot=$("sita-history-foot");
   if(!body) return;
   const rows=Object.entries(state.records)
     .filter(([key,r])=>Number(r?.sitaCount||0)>=108)
@@ -455,6 +457,7 @@ function renderSitaHistory(){
     .filter(x=>x.completedAt)
     .sort((a,b)=>b.key.localeCompare(a.key));
   body.innerHTML=rows.map((row,i)=>`<tr><td>${i+1}</td><td>${esc(indiaDateString(row.key))}</td><td>${esc(indiaTimeString(row.completedAt))}</td></tr>`).join("");
+  if(foot) foot.innerHTML=`<tr><td colspan="2">Total completed days</td><td>${rows.length}</td></tr>`;
   empty?.classList.toggle("hidden",rows.length>0);
 }
 

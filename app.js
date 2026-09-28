@@ -414,7 +414,8 @@ function renderExercises(){
     const activeRecord=recordFor().exercise?.[activeId];
     const activeRun=state.exerciseRuns[activeId] || (activeEx && !activeRecord?.completed ? loadPersistedExerciseRun(activeId,activeEx) : null);
     if(activeRun && !state.exerciseRuns[activeId]) state.exerciseRuns[activeId]=activeRun;
-    if(!activeEx || activeRecord?.completed || !activeRun || activeRun.remaining<=0){
+    // A run whose time ran out while the app was closed stays active so it gets recorded as completed below.
+    if(!activeEx || activeRecord?.completed || !activeRun){
       clearPersistedExerciseRun(activeId);
       setActiveExerciseId(null);
       delete state.exerciseRuns[activeId];
@@ -437,7 +438,14 @@ function renderExercises(){
     </div>`;
   }).join("");
   const active=activeId && state.exerciseRuns[activeId];
-  if(active && !recordFor().exercise?.[activeId]?.completed) startExerciseCanvas(activeId);
+  if(active && !recordFor().exercise?.[activeId]?.completed){
+    startExerciseCanvas(activeId);
+    // Reopened the app mid-exercise: resume the timer (and live notification), or record it if time is up.
+    if(!active.interval && !active.resuming){ active.resuming=true; setTimeout(()=>startExercise(activeId)); }
+  }
+}
+function liveExercise(ex,run){
+  window.HanumanNative?.live?.start({title:`🏃 ${ex.name}`,mode:"countdown",startedAt:run.startedAt,durationMs:run.duration*1000,page:"exercise"});
 }
 function formatTimer(sec){sec=Math.max(0,Math.floor(sec));return `${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`}
 
@@ -446,7 +454,7 @@ async function startExercise(id){
   if(recordFor().exercise?.[id]?.completed)return;
   const activeId=getActiveExerciseId();
   if(activeId && activeId!==id){showToast("Finish the current exercise before starting another.");return;}
-  if(activeId===id && state.exerciseRuns[id])return;
+  if(state.exerciseRuns[id]?.interval)return;   // already ticking
 
   let run=state.exerciseRuns[id] || loadPersistedExerciseRun(id,ex);
   const duration=Math.max(1,Number(ex.duration||1))*60;
@@ -457,7 +465,6 @@ async function startExercise(id){
   state.exerciseRuns[id]=run;
   setActiveExerciseId(id);
   persistExerciseRun(id,run);
-  renderExercises();
 
   const tick=async()=>{
     const current=state.exerciseRuns[id];
@@ -472,14 +479,16 @@ async function startExercise(id){
       const dayDone=await setExerciseRecord(id,{completed:true,startedAt:new Date(current.startedAt).toISOString(),completedAt,actualDuration:Number(ex.duration||1)*60});
       delete state.exerciseRuns[id];
       setActiveExerciseId(null);
+      window.HanumanNative?.live?.stop({doneTitle:`✓ ${ex.name} completed`,page:"exercise"});
       renderAll();
       if(!dayDone) showToast(`${ex.name} completed`,"success");
     }
   };
 
   if(remaining<=0){await tick();return;}
-  state.exerciseRuns[id].interval=setInterval(tick,1000);
-  startExerciseCanvas(id);
+  run.interval=setInterval(tick,1000);
+  liveExercise(ex,run);
+  renderExercises();   // sees the interval, so it won't try to resume again
   await tick();
 }
 
@@ -605,10 +614,23 @@ async function completeJai(){
   const v=$("jai-video"); if(!v.src)return;
   $("jai-start-btn").disabled=true; $("jai-status").textContent="Playing…";
   try{await v.play()}catch(e){$("jai-start-btn").disabled=false;showToast("Tap Start again to allow video playback.");return}
+  jaiLiveOn=true; liveJai();
 }
+// Live notification for the JAI video: native side extrapolates the position; we resync on play/pause and every 5 s.
+let jaiLiveOn=false, jaiLiveAt=0;
+function liveJai(){
+  const v=$("jai-video");
+  if(!jaiLiveOn || !window.HanumanNative?.live || !isFinite(v.duration) || v.duration<=0) return;
+  jaiLiveAt=Date.now();
+  window.HanumanNative.live.start({title:"🚩 JAI SRI RAM",mode:"elapsed",startedAt:Date.now()-v.currentTime*1000,
+    durationMs:v.duration*1000,positionMs:v.currentTime*1000,paused:v.paused,page:"jai"});
+}
+$("jai-video").addEventListener("playing",liveJai);
+$("jai-video").addEventListener("loadedmetadata",liveJai);
 $("jai-video").addEventListener("pause",async()=>{
   const v=$("jai-video");
   if(v.ended || !v.src || !state.user) return;
+  liveJai();
   try { await v.play(); } catch {}
 });
 $("jai-video").addEventListener("seeking",()=>{
@@ -618,8 +640,10 @@ $("jai-video").addEventListener("seeking",()=>{
 $("jai-video").addEventListener("timeupdate",()=>{
   const v=$("jai-video");
   v.__lastAllowedTime = v.currentTime;
+  if(jaiLiveOn && Date.now()-jaiLiveAt>5000) liveJai();
 });
 $("jai-video").addEventListener("ended",async()=>{
+  if(jaiLiveOn){ jaiLiveOn=false; window.HanumanNative?.live?.stop({doneTitle:"✓ JAI SRI RAM completed",page:"jai"}); }
   const key=todayKey(),r=recordFor(key);r.jai=true;r.jaiCompletedAt=new Date().toISOString();state.records[key]=r;
   const dayDone=await saveRecord(key,r); renderAll();
   if(!dayDone) celebrate("JAI SRI RAM complete","Today's video is done. Keep going with the rest of your sadhana.");
@@ -940,6 +964,8 @@ if(window.HanumanNative){
     setTimeout(syncNativeReminders,90000);
   });
   $("native-exact-btn")?.addEventListener("click",()=>window.HanumanNative.openExactAlarmSettings());
+  // Tapping the live notification (or its Open button) jumps to that page
+  window.HanumanNative.live?.onOpen(page=>switchPage(page));
 }
 $("jai-upload").onchange=uploadJai;
 $("add-expense-btn").onclick=()=>{ $("expense-form").reset(); $("expense-id").value=""; $("expense-date").value=todayKey(); openModal("expense-modal"); };

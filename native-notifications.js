@@ -49,5 +49,21 @@
   async function exactAlarmStatus() { try { return (await LN.checkExactNotificationSetting()).exact_alarm; } catch { return "unknown"; } }
   async function openExactAlarmSettings() { try { await LN.changeExactNotificationSetting(); } catch {} }
 
-  window.HanumanNative = { scheduleAll, exactAlarmStatus, openExactAlarmSettings, isNative: true };
+  // ---- Live progress notification (pinned, updating bar) while an exercise / JAI video runs ----
+  let LP = null;
+  try { LP = (Cap.Plugins && Cap.Plugins.LiveProgress) || (Cap.registerPlugin && Cap.registerPlugin("LiveProgress")); } catch (e) {}
+  const live = {
+    // {title, mode:"countdown"|"elapsed", startedAt, durationMs, positionMs, paused, page}
+    start(opts) { return LP ? LP.start(opts).catch(err => console.warn("Live notification failed", err)) : Promise.resolve(); },
+    // {doneTitle?, page?}  doneTitle shows a "completed" notification
+    stop(opts) { return LP ? LP.stop(opts || {}).catch(() => {}) : Promise.resolve(); },
+    // cb(page) when the user taps the notification or its Open button
+    onOpen(cb) {
+      if (!LP) return;
+      try { LP.addListener("open", d => d && d.page && cb(d.page)); } catch (e) {}
+      LP.getLaunchPage().then(r => r && r.page && cb(r.page)).catch(() => {});
+    },
+  };
+
+  window.HanumanNative = { scheduleAll, exactAlarmStatus, openExactAlarmSettings, live, isNative: true };
 })();

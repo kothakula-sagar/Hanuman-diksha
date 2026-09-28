@@ -41,9 +41,34 @@ const src = path.join(root, "assets", "icon.png");
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.WAKE_LOCK",
     "android.permission.VIBRATE",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
   ];
   const add = perms.filter(p => !m.includes(p)).map(p => `    <uses-permission android:name="${p}" />`).join("\n");
   if (add) m = m.replace("</manifest>", add + "\n</manifest>");
+
+  // ---- 4) Live progress notification: native plugin + foreground service ----
+  const appId = JSON.parse(fs.readFileSync(path.join(root, "capacitor.config.json"), "utf8")).appId;
+  const javaDir = path.join(root, "android", "app", "src", "main", "java", ...appId.split("."));
+  fs.mkdirSync(javaDir, { recursive: true });
+  for (const f of fs.readdirSync(javaDir)) {
+    if (/^MainActivity\.(java|kt)$/.test(f)) fs.rmSync(path.join(javaDir, f));   // replaced by our version below
+  }
+  for (const f of ["MainActivity.java", "LiveProgressPlugin.java", "LiveProgressService.java"]) {
+    fs.copyFileSync(path.join(root, "native-android", f), path.join(javaDir, f));
+  }
+  if (!m.includes("LiveProgressService")) {
+    const service = `        <service
+            android:name="${appId}.LiveProgressService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Live timer and progress for an exercise or prayer video the user started" />
+        </service>
+`;
+    m = m.replace("</application>", service + "    </application>");
+  }
   fs.writeFileSync(manifestPath, m);
-  console.log("Manifest permissions ensured.");
+  console.log("Manifest permissions, live-progress service and plugin installed.");
 })();

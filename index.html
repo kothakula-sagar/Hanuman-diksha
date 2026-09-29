@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#ff6a00">
   <meta name="description" content="Hanuman Disha - 108 Day Sadhana Tracker">
+  <meta name="referrer" content="strict-origin-when-cross-origin"><!-- YouTube embeds need a referrer inside the Android app -->
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -53,10 +54,9 @@
       <form id="auth-form">
         <label>Email<input id="auth-email" type="email" required autocomplete="email"></label>
         <label>Password<input id="auth-password" type="password" required minlength="6" autocomplete="current-password"></label>
-        <button class="primary-btn" type="submit"><span id="auth-submit-label">Sign in</span></button>
+        <button class="primary-btn wide" type="submit">Sign in</button>
       </form>
-      <button id="auth-toggle" class="text-btn">Create an account</button>
-      <small>Use your own Firebase Authentication account. The app does not expose your data publicly.</small>
+      <small class="auth-note">Private app. Only approved accounts can sign in.</small>
     </div>
   </div>
 
@@ -81,6 +81,7 @@
           <button class="nav-item" data-page="exercise">🏃 <span>Exercise</span></button>
           <button class="nav-item" data-page="jai">▶ <span>JAI SRI RAM</span></button>
           <button class="nav-item" data-page="sitaram">ॐ <span>SITA RAM</span></button>
+          <button class="nav-item" data-page="motivation">🔥 <span>Motivation</span></button>
           <button class="nav-item" data-page="calendar">▦ <span>Calendar</span></button>
           <button class="nav-item" data-page="money">₹ <span>Expenses & Borrowings</span></button>
           <button class="nav-item" data-page="settings">⚙ <span>Settings</span></button>
@@ -131,6 +132,10 @@
                 <span class="quote-mark">“</span>
                 <p>Discipline is built one completed day at a time.</p>
               </div>
+              <button id="dash-motivation" class="dash-motivation glass hidden" data-go="motivation">
+                <img id="dash-mot-thumb" alt="">
+                <div><span class="eyebrow">Today's motivation</span><b>Watch your video 🔥</b><small id="dash-mot-status"></small></div>
+              </button>
             </div>
           </div>
 
@@ -221,6 +226,23 @@
             </div>
             <div id="sita-history-empty" class="history-empty hidden">No completed SITA RAM records yet.</div>
           </div>
+        </section>
+
+        <section id="page-motivation" class="page">
+          <div class="page-head">
+            <div><div class="eyebrow">Daily inspiration</div><h2>Motivation</h2></div>
+            <button id="add-mot-btn" class="primary-btn">⬆ Upload video</button>
+          </div>
+          <div class="mot-now glass">
+            <div class="mot-now-head">
+              <div><div class="eyebrow" id="mot-now-meta"></div><h3 id="mot-now-title">Today's motivation</h3></div>
+              <span id="mot-now-status" class="status-pill hidden"></span>
+            </div>
+            <div id="mot-player" class="mot-player hidden"></div>
+            <div id="mot-empty" class="mot-empty">No motivation video for today. Tap <b>Upload video</b> to add one.</div>
+          </div>
+          <div class="section-head"><h3>All videos</h3></div>
+          <div id="mot-list" class="stack"></div>
         </section>
 
         <section id="page-calendar" class="page">
@@ -333,7 +355,9 @@
 
             <div id="native-card" class="settings-card glass hidden">
               <h3>Phone reminders (iQOO / Android)</h3>
-              <p class="helper">Reminders are scheduled on your phone and work with the app closed. To stop iQOO from silencing them, do these once:</p>
+              <p class="helper">Every timed item (todos, exercises, JAI SRI RAM, SITA RAM, motivation videos) gets 3 reminders: <b>2 minutes before</b>, <b>at the time</b>, and <b>overdue</b> if it hasn't been started. Anything already started or done today is skipped automatically.</p>
+              <label>Overdue reminder after (minutes)<input id="setting-overdue" type="number" min="1" max="240" value="15"></label>
+              <p class="helper">Reminders are scheduled on your phone and work with the app closed. Open the app at least once every few days to keep them topped up. To stop iQOO from silencing them, do these once:</p>
               <ol class="helper" style="padding-left:18px;margin:8px 0">
                 <li>Settings → Apps → Hanuman Disha → <b>Battery</b> → choose <b>Allow background activity / No restrictions</b>.</li>
                 <li>Settings → Apps → Hanuman Disha → <b>Notifications</b> → allow all.</li>
@@ -402,6 +426,20 @@
           </div>
         </div>
 
+        <div id="mot-modal" class="modal hidden">
+          <div class="modal-backdrop" data-close="mot-modal"></div>
+          <div class="modal-card glass">
+            <div class="modal-head"><h3>Upload motivation video</h3><button class="icon-btn" type="button" data-close="mot-modal">×</button></div>
+            <form id="mot-form">
+              <label>Date<input id="mot-date" type="date" required></label>
+              <label>YouTube video link<input id="mot-url" type="url" inputmode="url" required placeholder="https://youtu.be/…"></label>
+              <div id="mot-preview" class="mot-preview hidden"><img alt=""><span>✓ Video found</span></div>
+              <label>Reminder time<input id="mot-time" type="time" value="07:00" required></label>
+              <div class="button-row"><button type="button" class="secondary-btn" data-close="mot-modal">Cancel</button><button class="primary-btn" type="submit">Save</button></div>
+            </form>
+          </div>
+        </div>
+
         <div id="todo-modal" class="modal hidden">
           <div class="modal-backdrop" data-close="todo-modal"></div>
           <div class="modal-card glass">
@@ -434,6 +472,7 @@
       <div class="sheet-card">
         <div class="sheet-handle"></div>
         <div class="sheet-grid">
+          <button class="sheet-item wide" data-page="motivation"><i>🔥</i><span>Motivation</span></button>
           <button class="sheet-item" data-page="exercise"><i>🏃</i><span>Exercise</span></button>
           <button class="sheet-item" data-page="calendar"><i>▦</i><span>Calendar</span></button>
           <button class="sheet-item" data-page="money"><i>₹</i><span>Expenses</span></button>

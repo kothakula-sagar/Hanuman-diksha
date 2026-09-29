@@ -1,7 +1,7 @@
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
-  getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, deleteDoc, onSnapshot,
@@ -21,12 +21,13 @@ const state = {
   jai:{url:"",fileName:"",completedDate:""},
   expenses:[],
   borrowings:[],
+  motivation:[],
+  motivationSelected:null,
   moneyTab:"expenses",
   calendarMonth:new Date(new Date().getFullYear(),new Date().getMonth(),1),
   exerciseRuns:{},
   exerciseAnimations:{},
-  unsub:[],
-  authRegister:false
+  unsub:[]
 };
 
 const $ = id => document.getElementById(id);
@@ -350,23 +351,64 @@ function streak(){
 
 
 // ---- Native reminders (Android app only; no-op in the browser) ----
-let reminderTimer=null;
-function syncNativeReminders(){
-  if(!window.HanumanNative) return;
-  clearTimeout(reminderTimer);
-  reminderTimer=setTimeout(async()=>{
-    const items=[];
-    if(state.settings.jaiTime) items.push({key:"jai",time:state.settings.jaiTime,title:"JAI SRI RAM 🚩",body:"Time for today's JAI SRI RAM video."});
-    if(state.settings.sitaTime) items.push({key:"sita",time:state.settings.sitaTime,title:"SITA RAM ॐ",body:"Complete today's 108 SITA RAM."});
-    state.exercises.forEach(e=>{ if(e.time) items.push({key:"ex:"+e.id,time:e.time,title:"Exercise: "+e.name,body:`${e.duration||10} minutes — start now.`}); });
-    state.todos.forEach(t=>{ if(t.time) items.push({key:"todo:"+t.id,time:t.time,title:t.title,body:t.required===false?"Optional task":"Required task for today"}); });
-    const res=await window.HanumanNative.scheduleAll(items);
-    if(res && !res.ok && res.reason==="permission-denied") showToast("Allow notifications for Hanuman Disha in phone settings to get reminders.");
-  },800);
+// For every timed item: one reminder 2 min before, one at the time, and one "overdue" if it still isn't started.
+// Scheduled as one-off alarms for the next few days; anything started/done is dropped the moment the app syncs.
+const REMINDER_DAYS=4, REMINDER_LEAD_MS=2*60000, MAX_REMINDERS=400;
+const istTimestamp=(dateKey,time)=>new Date(`${dateKey}T${time}:00+05:30`).getTime();
+const addDaysKey=(key,n)=>{ const d=dateFromKey(key); d.setUTCDate(d.getUTCDate()+n); return localDateKey(d); };
+function overdueMinutes(){ return Math.min(240,Math.max(1,Number(state.settings.overdueMinutes||15))); }
+
+// Everything with a time on a given IST date, and whether it has been started (started = no more reminders).
+function timedItemsFor(dayKey){
+  const r=recordFor(dayKey), today=dayKey===todayKey(), items=[];
+  if(state.settings.jaiTime) items.push({key:"jai",time:state.settings.jaiTime,name:"JAI SRI RAM",icon:"🚩",page:"jai",detail:"Watch today's JAI SRI RAM video.",
+    started:r.jai===true||(today&&jaiLiveOn)});
+  if(state.settings.sitaTime) items.push({key:"sita",time:state.settings.sitaTime,name:"SITA RAM",icon:"ॐ",page:"sitaram",detail:"Complete today's 108 SITA RAM.",
+    started:Number(r.sitaCount||0)>0});
+  state.exercises.forEach(e=>{ if(e.time) items.push({key:"ex:"+e.id,time:e.time,name:e.name,icon:"🏃",page:"exercise",detail:`${e.duration||10} minute exercise.`,
+    started:r.exercise?.[e.id]?.completed===true||(today&&getActiveExerciseId()===e.id)}); });
+  state.todos.forEach(t=>{ if(t.time) items.push({key:"todo:"+t.id,time:t.time,name:t.title,icon:"✓",page:"todo",detail:t.required===false?"Optional task.":"Required task for today.",
+    started:r.todo?.[t.id]===true}); });
+  state.motivation.forEach(m=>{ if(m.date===dayKey && m.time) items.push({key:"mot:"+m.id,time:m.time,name:"Motivation video",icon:"🔥",page:"motivation",detail:"Your motivation video for today is ready.",
+    started:!!m.watchedAt}); });
+  return items;
 }
 
+function buildReminders(){
+  const now=Date.now(), lateMin=overdueMinutes(), out=[];
+  for(let d=0; d<REMINDER_DAYS; d++){
+    const day=addDaysKey(todayKey(),d);
+    timedItemsFor(day).forEach(it=>{
+      if(it.started) return;
+      const at=istTimestamp(day,it.time); if(!Number.isFinite(at)) return;
+      const k=`${it.key}:${day}`;
+      const add=(suffix,when,title,body)=>{ if(when>now+5000) out.push({key:`${k}:${suffix}`,at:when,title,body,page:it.page}); };
+      add("pre",at-REMINDER_LEAD_MS,`⏰ In 2 minutes: ${it.name}`,`${it.detail} Starts at ${it.time}.`);
+      add("now",at,`${it.icon} Time now: ${it.name}`,`${it.detail} Start now.`);
+      add("late",at+lateMin*60000,`⚠️ Overdue: ${it.name}`,`Scheduled at ${it.time} and not started yet.`);
+    });
+  }
+  return out.sort((a,b)=>a.at-b.at).slice(0,MAX_REMINDERS);   // Android caps alarms per app
+}
+
+let reminderTimer=null, lastReminderSig="";
+function syncNativeReminders(){
+  if(!window.HanumanNative || !state.user) return;
+  clearTimeout(reminderTimer);
+  reminderTimer=setTimeout(async()=>{
+    const items=buildReminders();
+    const sig=JSON.stringify(items.map(x=>[x.key,x.at,x.title]));
+    if(sig===lastReminderSig) return;          // nothing changed: skip the native round-trip
+    const res=await window.HanumanNative.scheduleAll(items);
+    if(res?.ok) lastReminderSig=sig;
+    else if(res?.reason==="permission-denied") showToast("Allow notifications for Hanuman Disha in phone settings to get reminders.");
+  },800);
+}
+// Coming back to the app (e.g. next morning) refreshes the rolling reminder window.
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) syncNativeReminders(); });
+
 function renderAll(){
-  renderDashboard(); renderTodo(); renderExercises(); renderJai(); renderSita(); renderJaiHistory(); renderSitaHistory(); renderCalendar(); renderMoney(); renderSettings(); syncNativeReminders();
+  renderDashboard(); renderTodo(); renderExercises(); renderJai(); renderSita(); renderJaiHistory(); renderSitaHistory(); renderCalendar(); renderMoney(); renderMotivation(); renderSettings(); syncNativeReminders();
   $("today-label").textContent=new Date().toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
 }
 
@@ -389,6 +431,9 @@ function renderDashboard(){
   $("sita-small").textContent=`${sitaDailyCount()} / 108 repetitions`;
   $("exercise-small").textContent=`${state.exercises.filter(e=>recordFor().exercise?.[e.id]?.completed).length}/${state.exercises.length} today`;
   $("todo-small").textContent=`${state.todos.filter(t=>recordFor().todo?.[t.id]).length}/${state.todos.length} completed`;
+  const mot=motivationForDate(todayKey())[0], motCard=$("dash-motivation");
+  motCard.classList.toggle("hidden",!mot);
+  if(mot){ $("dash-mot-thumb").src=ytThumb(mot.videoId); $("dash-mot-status").textContent=mot.watchedAt?"Watched ✓":`Tap to watch${mot.time?` · ${mot.time}`:""}`; }
 }
 
 function renderTodo(){
@@ -731,6 +776,7 @@ function renderSettings(){
   $("setting-sita-time").value=state.settings.sitaTime||"18:00";
   $("setting-cloudinary-cloud").value=state.settings.cloudinaryCloudName||"";
   $("setting-cloudinary-preset").value=state.settings.cloudinaryUploadPreset||"";
+  $("setting-overdue").value=overdueMinutes();
   $("jai-file-name").textContent=state.jai.fileName||"No video uploaded";
 }
 
@@ -755,6 +801,8 @@ async function loadUser(){
   state.unsub.push(onSnapshot(xq,s=>{state.expenses=s.docs.map(d=>({id:d.id,...d.data()}));renderMoney()}));
   const bq=query(collection(db,"users",state.user.uid,"borrowings"),orderBy("date","desc"));
   state.unsub.push(onSnapshot(bq,s=>{state.borrowings=s.docs.map(d=>({id:d.id,...d.data()}));renderMoney()}));
+  const mq=query(collection(db,"users",state.user.uid,"motivation"),orderBy("date","desc"));
+  state.unsub.push(onSnapshot(mq,s=>{state.motivation=s.docs.map(d=>({id:d.id,...d.data()}));renderMotivation();renderDashboard();syncNativeReminders()}));
   renderAll();
 }
 
@@ -768,7 +816,8 @@ async function saveSettings(){
     jaiTime:$("setting-jai-time").value,
     sitaTime:$("setting-sita-time").value,
     cloudinaryCloudName:$("setting-cloudinary-cloud").value.trim(),
-    cloudinaryUploadPreset:$("setting-cloudinary-preset").value.trim()
+    cloudinaryUploadPreset:$("setting-cloudinary-preset").value.trim(),
+    overdueMinutes:Math.min(240,Math.max(1,Number($("setting-overdue").value||15)))
   };
   await setDoc(doc(db,"users",state.user.uid,"meta","settings"),state.settings,{merge:true});
   renderAll();showToast(oldStart!==state.settings.startDate?"Journey settings saved.":"Settings saved.");
@@ -850,6 +899,118 @@ async function uploadJai(){
   }catch(err){ status.classList.remove("uploading"); renderSettings(); showToast(err.message,"error"); }
 }
 
+// ---- Motivation: dated YouTube videos that play inside the app, with reminders ----
+function youtubeId(url){
+  const s=String(url||"").trim();
+  if(/^[\w-]{11}$/.test(s)) return s;
+  const m=s.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/|v\/)|youtu\.be\/)([\w-]{11})/i);
+  return m?m[1]:"";
+}
+const ytThumb=id=>`https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
+const motivationForDate=key=>state.motivation.filter(m=>m.date===key).sort((a,b)=>(a.time||"").localeCompare(b.time||""));
+function selectedMotivation(){
+  return state.motivation.find(m=>m.id===state.motivationSelected) || motivationForDate(todayKey())[0] || null;
+}
+function motivationStatus(m){
+  const today=todayKey();
+  if(m.watchedAt) return "Watched ✓";
+  if(m.date>today) return "Upcoming";
+  return m.date===today ? "Not watched yet" : "Missed";
+}
+function motivationDayLabel(key){
+  const today=todayKey();
+  if(key===today) return "Today";
+  if(key===addDaysKey(today,1)) return "Tomorrow";
+  if(key===addDaysKey(today,-1)) return "Yesterday";
+  return indiaDateString(key);
+}
+
+let ytApi=null;
+function loadYouTubeApi(){
+  if(ytApi) return ytApi;
+  ytApi=new Promise((resolve,reject)=>{
+    if(window.YT?.Player) return resolve(window.YT);
+    const prev=window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady=()=>{ prev?.(); resolve(window.YT); };
+    const s=document.createElement("script"); s.src="https://www.youtube.com/iframe_api"; s.async=true;
+    s.onerror=()=>{ ytApi=null; reject(new Error("YouTube could not load")); };
+    document.head.appendChild(s);
+  });
+  return ytApi;
+}
+
+// Rebuilds the player only when the chosen video changes, so re-renders never restart playback.
+let ytPlayer=null, ytPlayerFor="";
+async function showMotivationPlayer(m){
+  const box=$("mot-player"), empty=$("mot-empty");
+  const key=m?`${m.id}:${m.videoId}`:"";
+  if(key===ytPlayerFor) return;
+  ytPlayerFor=key;
+  try{ ytPlayer?.destroy(); }catch{}
+  ytPlayer=null; box.innerHTML="";
+  box.classList.toggle("hidden",!m); empty.classList.toggle("hidden",!!m);
+  if(!m) return;
+  const mount=document.createElement("div"); box.appendChild(mount);
+  try{
+    const YT=await loadYouTubeApi();
+    if(ytPlayerFor!==key) return;   // selection changed while the API was loading
+    ytPlayer=new YT.Player(mount,{videoId:m.videoId,width:"100%",height:"100%",
+      playerVars:{playsinline:1,rel:0,modestbranding:1,origin:location.origin},
+      events:{onStateChange:e=>{ if(e.data===YT.PlayerState.PLAYING) markMotivationWatched(m.id); }}});
+  }catch{
+    // YouTube API blocked/offline: plain embed still plays, just without "watched" tracking.
+    box.innerHTML=`<iframe src="https://www.youtube.com/embed/${encodeURIComponent(m.videoId)}?playsinline=1&rel=0" title="Motivation video"
+      allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  }
+}
+function pauseMotivation(){ try{ ytPlayer?.pauseVideo?.(); }catch{} }
+
+async function markMotivationWatched(id){
+  const m=state.motivation.find(x=>x.id===id); if(!m||m.watchedAt||!state.user) return;
+  m.watchedAt=new Date().toISOString();
+  renderMotivation(); renderDashboard(); syncNativeReminders();   // cancels its overdue reminder
+  try{ await updateDoc(doc(db,"users",state.user.uid,"motivation",id),{watchedAt:m.watchedAt}); }catch(err){ console.error(err); }
+}
+
+function renderMotivation(){
+  if(!$("mot-list")) return;
+  const m=selectedMotivation(), today=todayKey();
+  $("mot-now-title").textContent=m?(m.date===today?"Today's motivation":`${motivationDayLabel(m.date)}'s motivation`):"Today's motivation";
+  $("mot-now-meta").textContent=m?`${indiaDateString(m.date)}${m.time?` · ${m.time}`:""}`:indiaDateString(today);
+  const pill=$("mot-now-status"); pill.classList.toggle("hidden",!m); if(m) pill.textContent=motivationStatus(m);
+  showMotivationPlayer(m);
+
+  const list=$("mot-list");
+  if(!state.motivation.length){ list.innerHTML=`<div class="empty glass">No motivation videos yet. Tap Upload video to add your first one.</div>`; return; }
+  // Today and upcoming first (soonest first), then past (most recent first)
+  const upcoming=state.motivation.filter(x=>x.date>=today).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  const past=state.motivation.filter(x=>x.date<today).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+  list.innerHTML=[...upcoming,...past].map(x=>`<div class="mot-row glass ${m&&x.id===m.id?"selected":""}">
+      <button class="mot-thumb" data-mot-play="${x.id}" aria-label="Play video for ${esc(indiaDateString(x.date))}"><img src="${ytThumb(x.videoId)}" alt="" loading="lazy"><span>▶</span></button>
+      <div class="mot-info"><b>${esc(motivationDayLabel(x.date))}</b><small>${esc(indiaDateString(x.date))}${x.time?` · ${esc(x.time)}`:""}</small><span class="status-pill">${esc(motivationStatus(x))}</span></div>
+      <button class="icon-btn" data-mot-delete="${x.id}" aria-label="Delete">×</button>
+    </div>`).join("");
+}
+
+function openMotivationModal(){
+  $("mot-form").reset(); $("mot-date").value=todayKey(); $("mot-time").value="07:00";
+  $("mot-preview").classList.add("hidden"); openModal("mot-modal");
+}
+function previewMotivationLink(){
+  const id=youtubeId($("mot-url").value), box=$("mot-preview");
+  box.classList.toggle("hidden",!id);
+  if(id) box.querySelector("img").src=ytThumb(id);
+}
+async function saveMotivation(){
+  const url=$("mot-url").value.trim(), videoId=youtubeId(url);
+  if(!videoId){ showToast("That doesn't look like a YouTube link. Paste the full video link.","error"); return; }
+  const data={date:$("mot-date").value,time:$("mot-time").value,url,videoId,createdAt:serverTimestamp()};
+  const ref=await addDoc(collection(db,"users",state.user.uid,"motivation"),data);
+  if(data.date===todayKey()) state.motivationSelected=ref.id;
+  closeModal("mot-modal");
+  showToast(`Motivation video saved for ${data.date===todayKey()?"today":indiaDateString(data.date)}.`,"success");
+}
+
 async function saveTodo(e){
   e.preventDefault();const id=$("todo-id").value;
   const data={title:$("todo-title").value.trim(),time:$("todo-time").value,type:$("todo-type").value,required:$("todo-required").checked,updatedAt:serverTimestamp()};
@@ -907,7 +1068,7 @@ function showCalendarLinks(){
 
 // ---- Navigation: sidebar (website), bottom nav + "More" sheet (phone app), Android back button via history ----
 const PAGES=[...document.querySelectorAll(".page")].map(p=>p.id.replace("page-",""));
-const MORE_PAGES=["exercise","calendar","money","settings"];
+const MORE_PAGES=["motivation","exercise","calendar","money","settings"];
 let currentPage="dashboard";
 function openSheet(){ $("more-sheet").classList.remove("hidden","closing"); }
 function closeSheet(){
@@ -918,6 +1079,7 @@ function switchPage(page,{push=true}={}){
   if(!PAGES.includes(page)) page="dashboard";
   closeSheet(); $("sidebar").classList.remove("open");
   if(page===currentPage && $(`page-${page}`).classList.contains("active")) return;
+  if(page!=="motivation") pauseMotivation();
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active","entering"));
   const el=$(`page-${page}`); el.classList.add("active","entering");
   clearTimeout(switchPage.t); switchPage.t=setTimeout(()=>el.classList.remove("entering"),800);
@@ -959,15 +1121,17 @@ $("clear-history-btn").onclick=clearHistory;
 if(window.HanumanNative){
   $("native-card")?.classList.remove("hidden");
   $("native-test-btn")?.addEventListener("click",async()=>{
-    const r=await window.HanumanNative.scheduleAll([{key:"test",time:(()=>{const d=new Date(Date.now()+60000);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");})(),title:"Test reminder 🚩",body:"If you see this, reminders work."}]);
+    const r=await window.HanumanNative.scheduleTest();
     showToast(r.ok?"Test reminder set for the next minute. Lock your phone and wait.":"Could not set reminder: "+(r.reason||"unknown"));
-    setTimeout(syncNativeReminders,90000);
   });
   $("native-exact-btn")?.addEventListener("click",()=>window.HanumanNative.openExactAlarmSettings());
-  // Tapping the live notification (or its Open button) jumps to that page
-  window.HanumanNative.live?.onOpen(page=>switchPage(page));
+  // Tapping any reminder, the live notification or its Open button jumps to that page
+  window.HanumanNative.onOpenPage(page=>switchPage(page));
 }
 $("jai-upload").onchange=uploadJai;
+$("add-mot-btn").onclick=openMotivationModal;
+$("mot-url").addEventListener("input",previewMotivationLink);
+$("mot-form").onsubmit=busy(saveMotivation);
 $("add-expense-btn").onclick=()=>{ $("expense-form").reset(); $("expense-id").value=""; $("expense-date").value=todayKey(); openModal("expense-modal"); };
 $("add-borrowing-btn").onclick=()=>{ $("borrowing-form").reset(); $("borrowing-id").value=""; $("borrowing-date").value=todayKey(); $("borrowing-status").value="outstanding"; openModal("borrowing-modal"); };
 $("expense-form").onsubmit=busy(saveExpense);
@@ -1005,6 +1169,8 @@ document.addEventListener("click",async e=>{
   const tt=e.target.closest("[data-todo-toggle]");if(tt)await toggleTodo(tt.dataset.todoToggle);
   const te=e.target.closest("[data-todo-edit]");if(te)editTodo(te.dataset.todoEdit);
   const td=e.target.closest("[data-todo-delete]");if(td){if(await confirmDialog("Delete this task?","It will be removed from your daily list.",{okText:"Delete",danger:true})){await deleteDoc(doc(db,"users",state.user.uid,"todos",td.dataset.todoDelete));showToast("Task deleted.");}}
+  const mp=e.target.closest("[data-mot-play]");if(mp){state.motivationSelected=mp.dataset.motPlay;renderMotivation();$("mot-player").scrollIntoView({behavior:"smooth",block:"center"});}
+  const md=e.target.closest("[data-mot-delete]");if(md){if(await confirmDialog("Delete this video?","It will be removed from Motivation along with its reminders.",{okText:"Delete",danger:true})){await deleteDoc(doc(db,"users",state.user.uid,"motivation",md.dataset.motDelete));showToast("Motivation video deleted.");}}
   const ee=e.target.closest("[data-ex-start]");if(ee)startExercise(ee.dataset.exStart);
   const ed=e.target.closest("[data-ex-edit]");if(ed)editExercise(ed.dataset.exEdit);
   const exed=e.target.closest("[data-expense-edit]");if(exed)editExpense(exed.dataset.expenseEdit);
@@ -1013,18 +1179,22 @@ document.addEventListener("click",async e=>{
   const bdel=e.target.closest("[data-borrow-delete]");if(bdel){if(await confirmDialog("Delete this borrowing?","This entry will be removed permanently.",{okText:"Delete",danger:true})){await deleteDoc(doc(db,"users",state.user.uid,"borrowings",bdel.dataset.borrowDelete));showToast("Borrowing deleted.");}}
 });
 
-let authModeRegister=false;
-$("auth-toggle").onclick=()=>{
-  authModeRegister=!authModeRegister;
-  $("auth-submit-label").textContent=authModeRegister?"Create account":"Sign in";
-  $("auth-toggle").textContent=authModeRegister?"Already have an account? Sign in":"Create an account";
-};
+// Sign-in only: accounts are created by the owner in Firebase Console → Authentication → Users.
+function authErrorMessage(err){
+  const code=err?.code||"";
+  if(["auth/invalid-credential","auth/wrong-password","auth/user-not-found","auth/invalid-email","auth/invalid-login-credentials"].includes(code))
+    return "Email or password is incorrect, or this email isn't allowed to sign in.";
+  if(code==="auth/user-disabled") return "This account has been disabled. Contact the app owner.";
+  if(code==="auth/too-many-requests") return "Too many attempts. Wait a few minutes and try again.";
+  if(code==="auth/network-request-failed") return "No internet connection. Check your network and try again.";
+  return String(err?.message||"Sign-in failed").replace("Firebase: ","");
+}
 $("auth-form").onsubmit=busy(async e=>{
   const email=$("auth-email").value.trim(),pass=$("auth-password").value;
-  try{if(authModeRegister)await createUserWithEmailAndPassword(auth,email,pass);else await signInWithEmailAndPassword(auth,email,pass);}
+  try{ await signInWithEmailAndPassword(auth,email,pass); }
   catch(err){
     $("auth-form").closest(".auth-card").animate([{transform:"translateX(0)"},{transform:"translateX(-8px)"},{transform:"translateX(8px)"},{transform:"translateX(0)"}],{duration:360});
-    showToast(err.message.replace("Firebase: ",""),"error");
+    showToast(authErrorMessage(err),"error");
   }
 });
 

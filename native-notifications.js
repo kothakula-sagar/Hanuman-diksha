@@ -18,30 +18,42 @@
     return p.display === "granted";
   }
 
-  // items: [{key, title, body, time:"HH:MM"}]
+  async function ensureChannel() {
+    await LN.createChannel({ id: CHANNEL, name: "Daily sadhana reminders", description: "JAI SRI RAM, SITA RAM, exercises, tasks and motivation", importance: 5, visibility: 1, vibration: true });
+  }
+  const toNotification = it => {
+    const base = { id: idFor(it.key), title: it.title, body: it.body, channelId: CHANNEL, smallIcon: "ic_stat_icon", extra: { page: it.page || "" } };
+    if (it.at) return { ...base, schedule: { at: new Date(it.at), allowWhileIdle: true } };           // one-off
+    const t = parse(it.time); if (!t) return null;
+    return { ...base, schedule: { on: { hour: t.hour, minute: t.minute }, repeats: true, allowWhileIdle: true } };  // daily
+  };
+
+  // items: [{key, title, body, page, at:msTimestamp}] (one-off) or [{..., time:"HH:MM"}] (daily repeat)
+  // Replaces everything scheduled before, so edits, deletions and completed tasks stay in sync.
   async function scheduleAll(items) {
     try {
       if (!(await ensurePermission())) return { ok: false, reason: "permission-denied" };
-      await LN.createChannel({ id: CHANNEL, name: "Daily sadhana reminders", description: "JAI SRI RAM, SITA RAM, exercises and tasks", importance: 5, visibility: 1, vibration: true });
-
-      // Replace everything we scheduled before, so edits and deletions stay in sync
+      await ensureChannel();
       const pending = await LN.getPending();
       if (pending.notifications && pending.notifications.length)
         await LN.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
-
-      const list = [];
-      for (const it of items) {
-        const t = parse(it.time); if (!t) continue;
-        list.push({
-          id: idFor(it.key), title: it.title, body: it.body, channelId: CHANNEL,
-          smallIcon: "ic_stat_icon",
-          schedule: { on: { hour: t.hour, minute: t.minute }, repeats: true, allowWhileIdle: true },
-        });
-      }
+      const list = items.map(toNotification).filter(Boolean);
       if (list.length) await LN.schedule({ notifications: list });
       return { ok: true, count: list.length };
     } catch (err) {
       console.error("Notification scheduling failed", err);
+      return { ok: false, reason: String(err && err.message || err) };
+    }
+  }
+
+  // One test notification in ~1 minute, without touching the scheduled reminders.
+  async function scheduleTest() {
+    try {
+      if (!(await ensurePermission())) return { ok: false, reason: "permission-denied" };
+      await ensureChannel();
+      await LN.schedule({ notifications: [toNotification({ key: "test:" + Date.now(), title: "Test reminder 🚩", body: "If you see this, reminders work.", page: "settings", at: Date.now() + 60000 })] });
+      return { ok: true };
+    } catch (err) {
       return { ok: false, reason: String(err && err.message || err) };
     }
   }
@@ -65,5 +77,11 @@
     },
   };
 
-  window.HanumanNative = { scheduleAll, exactAlarmStatus, openExactAlarmSettings, live, isNative: true };
+  // cb(page) when the user taps any reminder or the live notification
+  function onOpenPage(cb) {
+    try { LN.addListener("localNotificationActionPerformed", a => { const p = a && a.notification && a.notification.extra && a.notification.extra.page; if (p) cb(p); }); } catch (e) {}
+    live.onOpen(cb);
+  }
+
+  window.HanumanNative = { scheduleAll, scheduleTest, exactAlarmStatus, openExactAlarmSettings, live, onOpenPage, isNative: true };
 })();

@@ -269,14 +269,23 @@ function isInJourney(dateKey){
 function recordFor(dateKey=todayKey()){
   return state.records[dateKey] || {todo:{},exercise:{},jai:false,manual:false,status:"pending"};
 }
+// A todo/exercise only counts from the day AFTER it was added, so adding something new
+// never breaks today's progress or any past day. Older items without activeFrom fall back to createdAt.
+function itemStartKey(item){
+  if(item.activeFrom) return item.activeFrom;
+  const created=item.createdAt?.toDate?.();
+  return created ? addDaysKey(localDateKey(created),1) : "";
+}
+const appliesOn=(item,dateKey)=>{ const s=itemStartKey(item); return !s || s<=dateKey; };
+const startsLater=item=>!appliesOn(item,todayKey());
 function requiredTodoComplete(dateKey=todayKey()){
-  const required=state.todos.filter(x=>x.required!==false);
+  const required=state.todos.filter(x=>x.required!==false && appliesOn(x,dateKey));
   if(!required.length) return true;
   const r=recordFor(dateKey);
   return required.every(t=>r.todo?.[t.id]===true);
 }
 function exerciseComplete(dateKey=todayKey()){
-  const req=state.exercises;
+  const req=state.exercises.filter(e=>appliesOn(e,dateKey));
   if(!req.length) return true;
   const r=recordFor(dateKey);
   return req.every(e=>r.exercise?.[e.id]?.completed===true);
@@ -286,8 +295,12 @@ function sitaComplete(dateKey=todayKey()){ return Number(recordFor(dateKey).sita
 
 // A day is complete ONLY when todo + exercises + JAI SRI RAM video + SITA RAM (108) are all done.
 function allRequiredComplete(dateKey=todayKey()){
-  // Days locked in by "Clear history" stay complete, even though their JAI/SITA history fields were deleted.
-  if(dateKey!==todayKey() && recordFor(dateKey).historyCleared===true) return true;
+  // Past days that were saved as complete stay complete: later edits (new tasks, changed settings,
+  // "Clear history") can never turn a finished day into a missed one.
+  if(dateKey!==todayKey()){
+    const r=recordFor(dateKey);
+    if(r.historyCleared===true || r.status==="complete") return true;
+  }
   return requiredTodoComplete(dateKey) && exerciseComplete(dateKey) && jaiComplete(dateKey) && sitaComplete(dateKey);
 }
 
@@ -327,6 +340,7 @@ async function applyAutomaticResetIfNeeded(){
       const restartKey = localDateKey(restart);
       // Do not repeatedly reset when the current start date is already the restart date.
       if(state.settings.startDate !== restartKey){
+        state.settings.previousStartDate = state.settings.startDate;   // lets "Undo last reset" restore it
         state.settings.startDate = restartKey;
         state.settings.resetCount = Number(state.settings.resetCount||0)+1;
         state.settings.lastResetDate = lastMissed;
@@ -422,8 +436,9 @@ function renderDashboard(){
   const complete=allRequiredComplete();
   $("today-status").textContent=complete?"Completed":"Pending";
   $("journey-state-pill").textContent=state.settings.startDate ? (day?`Day ${day} active`:"Upcoming"):"Not started";
-  const todos=state.todos.map(t=>({label:t.title,done:recordFor().todo?.[t.id]===true,time:t.time}));
-  const ex=state.exercises.map(e=>({label:e.name,done:recordFor().exercise?.[e.id]?.completed===true,time:e.time}));
+  const later=x=>startsLater(x)?" · starts tomorrow":"";
+  const todos=state.todos.map(t=>({label:t.title,done:recordFor().todo?.[t.id]===true,time:(t.time||"")+later(t)}));
+  const ex=state.exercises.map(e=>({label:e.name,done:recordFor().exercise?.[e.id]?.completed===true,time:(e.time||"")+later(e)}));
   const items=[...todos,...ex,{label:"JAI SRI RAM video",done:jaiComplete(),time:state.settings.jaiTime},{label:`SITA RAM (${sitaDailyCount()}/108)`,done:sitaComplete(),time:state.settings.sitaTime}];
   $("today-summary").innerHTML=items.length?items.map(x=>`<div class="summary-item"><div><b>${esc(x.label)}</b><small>${x.time||""}</small></div><span class="check ${x.done?"done":""}">${x.done?"✓":"•"}</span></div>`).join(""):`<div class="empty glass">Add your first daily task in Todo.</div>`;
   $("day-note").textContent=state.settings.resetOnMiss?"A missed required activity will mark the day missed and the next journey starts at Day 1.":"Reset mode is off. Missed days remain recorded without automatic reset.";
@@ -443,7 +458,7 @@ function renderTodo(){
     const done=recordFor().todo?.[t.id]===true;
     return `<div class="task-card glass ${done?"done":""}" ${popAttr(t.id)}>
       <button class="task-check" data-todo-toggle="${t.id}">${done?"✓":""}</button>
-      <div><div class="task-title">${esc(t.title)}</div><div class="task-meta">${esc(t.time||"")} · ${t.type==="avoid"?"Avoid":"Task"} · ${t.required!==false?"Required":"Optional"}</div></div>
+      <div><div class="task-title">${esc(t.title)}</div><div class="task-meta">${esc(t.time||"")} · ${t.type==="avoid"?"Avoid":"Task"} · ${t.required!==false?"Required":"Optional"}${startsLater(t)?` <span class="status-pill new-pill">Starts tomorrow</span>`:""}</div></div>
       <div class="task-actions"><button class="icon-btn" data-todo-edit="${t.id}">✎</button><button class="icon-btn" data-todo-delete="${t.id}">×</button></div>
     </div>`;
   }).join("");
@@ -477,7 +492,7 @@ function renderExercises(){
     const anotherActive=!!activeId && activeId!==e.id;
     const buttonLabel=run.completed?'✓ Completed':active?'Running':'Start';
     return `<div class="exercise-card glass ${active?'exercise-active':''} ${run.completed?'exercise-done':''}">
-      <div class="exercise-head"><div><h3>${esc(e.name)}</h3><div class="task-meta">${esc(e.time||'')} · ${mins} minutes</div></div><button class="icon-btn" data-ex-edit="${e.id}" ${active||anotherActive?'disabled':''}>✎</button></div>
+      <div class="exercise-head"><div><h3>${esc(e.name)}</h3><div class="task-meta">${esc(e.time||'')} · ${mins} minutes${startsLater(e)?` <span class="status-pill new-pill">Starts tomorrow</span>`:''}</div></div><button class="icon-btn" data-ex-edit="${e.id}" ${active||anotherActive?'disabled':''}>✎</button></div>
       <div class="exercise-canvas-wrap"><canvas id="exercise-canvas-${e.id}" class="exercise-canvas" aria-label="Animated ${esc(e.name)} demonstration"></canvas><div class="canvas-badge">${active?'● LIVE':run.completed?'✓ DONE':'READY'}</div></div>
       <div class="exercise-controls"><button class="primary-btn" data-ex-start="${e.id}" ${run.completed||anotherActive||active?'disabled':''}>${buttonLabel}</button><span class="timer ${active?'timer-live':''}" id="timer-${e.id}">${formatTimer(remaining)}</span>${active?`<span class="status-pill exercise-running">Exercise in progress</span>`:''}${run.completed?`<span class="status-pill">Completed ${indiaTimeString(run.completedAt)}</span>`:''}${anotherActive?`<span class="status-pill">Another exercise is running</span>`:''}</div>
     </div>`;
@@ -777,6 +792,9 @@ function renderSettings(){
   $("setting-cloudinary-cloud").value=state.settings.cloudinaryCloudName||"";
   $("setting-cloudinary-preset").value=state.settings.cloudinaryUploadPreset||"";
   $("setting-overdue").value=overdueMinutes();
+  const prev=state.settings.previousStartDate;
+  $("undo-reset-box").classList.toggle("hidden",!prev);
+  if(prev) $("undo-reset-text").textContent=`The journey was reset to Day 1 on ${indiaDateString(state.settings.startDate)} (missed ${state.settings.lastResetDate?indiaDateString(state.settings.lastResetDate):"a day"}). If that was a mistake, restore the previous start date ${indiaDateString(prev)}.`;
   $("jai-file-name").textContent=state.jai.fileName||"No video uploaded";
 }
 
@@ -1014,16 +1032,19 @@ async function saveMotivation(){
 async function saveTodo(e){
   e.preventDefault();const id=$("todo-id").value;
   const data={title:$("todo-title").value.trim(),time:$("todo-time").value,type:$("todo-type").value,required:$("todo-required").checked,updatedAt:serverTimestamp()};
-  if(id)await updateDoc(doc(db,"users",state.user.uid,"todos",id),data);else await addDoc(collection(db,"users",state.user.uid,"todos"),{...data,createdAt:serverTimestamp()});
-  closeModal("todo-modal");e.target.reset();$("todo-required").checked=true;showToast("Task saved.");
+  if(id)await updateDoc(doc(db,"users",state.user.uid,"todos",id),data);
+  else await addDoc(collection(db,"users",state.user.uid,"todos"),{...data,activeFrom:addDaysKey(todayKey(),1),createdAt:serverTimestamp()});
+  closeModal("todo-modal");e.target.reset();$("todo-required").checked=true;
+  showToast(id?"Task saved.":"Task saved. It counts from tomorrow, so today's progress is safe.","success");
 }
 async function saveExercise(e){
   e.preventDefault();
   const id=$("exercise-id").value;
   const data={name:$("exercise-name").value.trim(),time:$("exercise-time").value,duration:Number($("exercise-duration").value),updatedAt:serverTimestamp()};
   if(id) await updateDoc(doc(db,"users",state.user.uid,"exercises",id),data);
-  else await addDoc(collection(db,"users",state.user.uid,"exercises"),{...data,createdAt:serverTimestamp()});
-  closeModal("exercise-modal"); e.target.reset(); showToast("Exercise saved.");
+  else await addDoc(collection(db,"users",state.user.uid,"exercises"),{...data,activeFrom:addDaysKey(todayKey(),1),createdAt:serverTimestamp()});
+  closeModal("exercise-modal"); e.target.reset();
+  showToast(id?"Exercise saved.":"Exercise saved. It counts from tomorrow, so today's progress is safe.","success");
 }
 
 function openModal(id){$(id).classList.remove("hidden")}
@@ -1118,6 +1139,16 @@ $("add-todo-btn").onclick=()=>{ $("todo-id").value=""; $("todo-form").reset();$(
 $("exercise-settings-btn").onclick=()=>{ $("exercise-form").reset();$("exercise-id").value="";openModal("exercise-modal");};
 $("save-settings-btn").onclick=busy(saveSettings);
 $("clear-history-btn").onclick=clearHistory;
+$("undo-reset-btn").onclick=busy(async()=>{
+  const prev=state.settings.previousStartDate; if(!prev) return;
+  if(!await confirmDialog("Undo last reset?",`Your journey will start again from ${indiaDateString(prev)}.`,{okText:"Restore"})) return;
+  state.settings.startDate=prev;
+  state.settings.previousStartDate=null;
+  state.settings.resetCount=Math.max(0,Number(state.settings.resetCount||0)-1);
+  await setDoc(doc(db,"users",state.user.uid,"meta","settings"),state.settings,{merge:true});
+  renderAll();
+  showState({tone:"success",title:"Journey restored",message:`You're back on Day ${currentDay()}. Keep going!`});
+});
 if(window.HanumanNative){
   $("native-card")?.classList.remove("hidden");
   $("native-test-btn")?.addEventListener("click",async()=>{

@@ -317,6 +317,11 @@
               <label>Number of days<input id="setting-days" type="number" min="1" max="365" value="108"></label>
               <p class="helper">If a required activity is missed and reset mode is enabled, the next journey starts at Day 1.</p>
               <label class="switch-row"><span>Reset on missed required activity</span><input id="setting-reset" type="checkbox" checked><i></i></label>
+              <p class="helper">New todos and exercises count from the next day, so adding something never breaks today or any completed day.</p>
+              <div id="undo-reset-box" class="hidden">
+                <p class="helper" id="undo-reset-text"></p>
+                <button id="undo-reset-btn" class="secondary-btn" type="button">↩ Undo last reset</button>
+              </div>
             </div>
 
             <div class="settings-card glass">
